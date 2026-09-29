@@ -29,7 +29,10 @@ pub struct Opcoes {
 
 /// Pasta padrão: ao lado da imagem, com o nome dela sem a extensão.
 pub fn destino_padrao(iso: &Path) -> PathBuf {
-    let pasta = iso.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    let pasta = iso
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
     pasta.join(iso.file_stem().unwrap_or_default())
 }
 
@@ -39,18 +42,29 @@ fn e_atualizacao(e: &Entrada) -> bool {
 
 /// O que vai ser extraído (tira a `$SystemUpdate` da raiz, se pedido).
 pub fn selecionar(raiz: Vec<Entrada>, opcoes: &Opcoes) -> Vec<Entrada> {
-    raiz.into_iter().filter(|e| !(opcoes.sem_atualizacao && e_atualizacao(e))).collect()
+    raiz.into_iter()
+        .filter(|e| !(opcoes.sem_atualizacao && e_atualizacao(e)))
+        .collect()
 }
 
 /// Extrai `entradas` em `destino`. Devolve os bytes gravados.
-pub fn extrair(img: &mut Imagem, entradas: &[Entrada], destino: &Path, opcoes: &Opcoes, progresso: &Progresso) -> Resultado<u64> {
+pub fn extrair(
+    img: &mut Imagem,
+    entradas: &[Entrada],
+    destino: &Path,
+    opcoes: &Opcoes,
+    progresso: &Progresso,
+) -> Resultado<u64> {
     let totais = arvore::totais(entradas);
 
     // Destino: se já existe com conteúdo, só com --sobrescrever.
     let existia = destino.exists();
     if existia {
         if !destino.is_dir() {
-            return Err(Erro::Destino(format!("{} existe e não é uma pasta", destino.display())));
+            return Err(Erro::Destino(format!(
+                "{} existe e não é uma pasta",
+                destino.display()
+            )));
         }
         let vazio = fs::read_dir(destino)?.next().is_none();
         if !vazio && !opcoes.sobrescrever {
@@ -71,7 +85,9 @@ pub fn extrair(img: &mut Imagem, entradas: &[Entrada], destino: &Path, opcoes: &
         )));
     }
 
-    let mut criados = Criados { caminhos: Vec::new() };
+    let mut criados = Criados {
+        caminhos: Vec::new(),
+    };
     if !existia {
         fs::create_dir_all(destino)?;
         criados.caminhos.push(destino.to_path_buf());
@@ -102,7 +118,13 @@ impl Criados {
     }
 }
 
-fn extrair_nivel(img: &mut Imagem, entradas: &[Entrada], pasta: &Path, criados: &mut Criados, progresso: &Progresso) -> Resultado<()> {
+fn extrair_nivel(
+    img: &mut Imagem,
+    entradas: &[Entrada],
+    pasta: &Path,
+    criados: &mut Criados,
+    progresso: &Progresso,
+) -> Resultado<()> {
     for e in entradas {
         if sistema::cancelado() {
             return Err(Erro::Cancelado);
@@ -121,7 +143,13 @@ fn extrair_nivel(img: &mut Imagem, entradas: &[Entrada], pasta: &Path, criados: 
     Ok(())
 }
 
-fn extrair_arquivo(img: &mut Imagem, e: &Entrada, alvo: &Path, criados: &mut Criados, progresso: &Progresso) -> Resultado<()> {
+fn extrair_arquivo(
+    img: &mut Imagem,
+    e: &Entrada,
+    alvo: &Path,
+    criados: &mut Criados,
+    progresso: &Progresso,
+) -> Resultado<()> {
     let mut parcial = alvo.as_os_str().to_owned();
     parcial.push(SUFIXO_PARCIAL);
     let parcial = PathBuf::from(parcial);

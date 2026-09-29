@@ -90,7 +90,11 @@ impl Imagem {
                 tamanho_raiz,
                 criacao,
             };
-            img.conferir_trecho(setor_raiz, tamanho_raiz as u64, "a tabela do diretório raiz")?;
+            img.conferir_trecho(
+                setor_raiz,
+                tamanho_raiz as u64,
+                "a tabela do diretório raiz",
+            )?;
             return Ok(img);
         }
 
@@ -118,8 +122,9 @@ impl Imagem {
     pub fn ler(&mut self, setor: u32, tamanho: usize, o_que: &str) -> Resultado<Vec<u8>> {
         self.conferir_trecho(setor, tamanho as u64, o_que)?;
         let mut buf = vec![0u8; tamanho];
-        self.arquivo
-            .seek(SeekFrom::Start(self.layout.deslocamento() + setor as u64 * SETOR))?;
+        self.arquivo.seek(SeekFrom::Start(
+            self.layout.deslocamento() + setor as u64 * SETOR,
+        ))?;
         self.arquivo.read_exact(&mut buf)?;
         Ok(buf)
     }
@@ -127,8 +132,9 @@ impl Imagem {
     /// Posiciona o arquivo no início do conteúdo de `setor`, para leitura em
     /// fluxo (extração de arquivos grandes sem carregar tudo na memória).
     pub fn leitor_em(&mut self, setor: u32) -> Resultado<&mut File> {
-        self.arquivo
-            .seek(SeekFrom::Start(self.layout.deslocamento() + setor as u64 * SETOR))?;
+        self.arquivo.seek(SeekFrom::Start(
+            self.layout.deslocamento() + setor as u64 * SETOR,
+        ))?;
         Ok(&mut self.arquivo)
     }
 }

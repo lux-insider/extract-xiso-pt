@@ -61,7 +61,11 @@ pub fn totais(entradas: &[Entrada]) -> Totais {
 pub fn percorrer(entradas: &[Entrada], f: &mut dyn FnMut(&Entrada, &str)) {
     fn rec(entradas: &[Entrada], prefixo: &str, f: &mut dyn FnMut(&Entrada, &str)) {
         for e in entradas {
-            let caminho = if prefixo.is_empty() { e.nome.clone() } else { format!("{prefixo}/{}", e.nome) };
+            let caminho = if prefixo.is_empty() {
+                e.nome.clone()
+            } else {
+                format!("{prefixo}/{}", e.nome)
+            };
             f(e, &caminho);
             if e.eh_diretorio() {
                 rec(&e.filhos, &caminho, f);
@@ -73,7 +77,10 @@ pub fn percorrer(entradas: &[Entrada], f: &mut dyn FnMut(&Entrada, &str)) {
 
 /// Lê a árvore inteira a partir da raiz.
 pub fn ler(img: &mut Imagem) -> Resultado<Vec<Entrada>> {
-    let mut leitor = Leitor { ancestrais: HashSet::new(), contagem: 0 };
+    let mut leitor = Leitor {
+        ancestrais: HashSet::new(),
+        contagem: 0,
+    };
     let (setor, tamanho) = (img.setor_raiz, img.tamanho_raiz);
     leitor.diretorio(img, setor, tamanho, "", 0)
 }
@@ -94,8 +101,16 @@ impl Leitor {
         caminho: &str,
         profundidade: usize,
     ) -> Resultado<Vec<Entrada>> {
-        let onde = if caminho.is_empty() { "a raiz".to_string() } else { format!("o diretório {caminho}") };
-        let da_tabela = if caminho.is_empty() { "a tabela da raiz".to_string() } else { format!("a tabela do diretório {caminho}") };
+        let onde = if caminho.is_empty() {
+            "a raiz".to_string()
+        } else {
+            format!("o diretório {caminho}")
+        };
+        let da_tabela = if caminho.is_empty() {
+            "a tabela da raiz".to_string()
+        } else {
+            format!("a tabela do diretório {caminho}")
+        };
         if tamanho == 0 {
             return Ok(Vec::new()); // diretório vazio
         }
@@ -105,7 +120,9 @@ impl Leitor {
             )));
         }
         if tamanho > MAX_TABELA {
-            return Err(imagem(format!("{onde} declara uma tabela de {tamanho} bytes: a imagem está corrompida")));
+            return Err(imagem(format!(
+                "{onde} declara uma tabela de {tamanho} bytes: a imagem está corrompida"
+            )));
         }
         if !self.ancestrais.insert(setor) {
             return Err(imagem(format!(
@@ -132,9 +149,15 @@ impl Leitor {
         for no in nos {
             self.contagem += 1;
             if self.contagem > MAX_ENTRADAS {
-                return Err(imagem("mais de um milhão de entradas: a imagem está corrompida"));
+                return Err(imagem(
+                    "mais de um milhão de entradas: a imagem está corrompida",
+                ));
             }
-            let caminho_e = if caminho.is_empty() { no.nome.clone() } else { format!("{caminho}/{}", no.nome) };
+            let caminho_e = if caminho.is_empty() {
+                no.nome.clone()
+            } else {
+                format!("{caminho}/{}", no.nome)
+            };
             validar_nome(&no.nome, &caminho_e)?;
             if !nomes.insert(no.nome.to_lowercase()) {
                 return Err(Erro::NomeInseguro(format!(
@@ -142,7 +165,13 @@ impl Leitor {
                      maiúsculas, seriam o mesmo arquivo no Windows)"
                 )));
             }
-            let mut e = Entrada { nome: no.nome, setor: no.setor, tamanho: no.tamanho, atributos: no.atributos, filhos: Vec::new() };
+            let mut e = Entrada {
+                nome: no.nome,
+                setor: no.setor,
+                tamanho: no.tamanho,
+                atributos: no.atributos,
+                filhos: Vec::new(),
+            };
             if e.eh_diretorio() {
                 e.filhos = self.diretorio(img, e.setor, e.tamanho, &caminho_e, profundidade + 1)?;
             } else if e.tamanho > 0 {
@@ -166,7 +195,13 @@ struct No {
 /// Percorre a árvore binária da tabela a partir do nó em `pos` (em bytes),
 /// em ordem, sem recursão (uma árvore degenerada de milhares de nós não pode
 /// estourar a pilha).
-fn em_ordem(tabela: &[u8], raiz: usize, visitados: &mut HashSet<usize>, saida: &mut Vec<No>, onde: &str) -> Resultado<()> {
+fn em_ordem(
+    tabela: &[u8],
+    raiz: usize,
+    visitados: &mut HashSet<usize>,
+    saida: &mut Vec<No>,
+    onde: &str,
+) -> Resultado<()> {
     // pilha de (posição, já desceu à esquerda?)
     let mut pilha: Vec<(usize, bool)> = vec![(raiz, false)];
     while let Some((pos, desceu)) = pilha.pop() {
@@ -194,8 +229,14 @@ fn em_ordem(tabela: &[u8], raiz: usize, visitados: &mut HashSet<usize>, saida: &
 }
 
 fn ler_no(tabela: &[u8], pos: usize, onde: &str) -> Resultado<(u16, u16, No)> {
-    let fora = || imagem(format!("{onde} tem um nó fora dela (deslocamento {pos}): a imagem está corrompida"));
-    let cab = tabela.get(pos..pos.checked_add(14).ok_or_else(fora)?).ok_or_else(fora)?;
+    let fora = || {
+        imagem(format!(
+            "{onde} tem um nó fora dela (deslocamento {pos}): a imagem está corrompida"
+        ))
+    };
+    let cab = tabela
+        .get(pos..pos.checked_add(14).ok_or_else(fora)?)
+        .ok_or_else(fora)?;
     let esq = u16::from_le_bytes([cab[0], cab[1]]);
     let dir = u16::from_le_bytes([cab[2], cab[3]]);
     if esq == 0xFFFF || dir == 0xFFFF {
@@ -219,7 +260,16 @@ fn ler_no(tabela: &[u8], pos: usize, onde: &str) -> Resultado<(u16, u16, No)> {
         Ok(s) => s.to_string(),
         Err(_) => bytes.iter().map(|&b| b as char).collect(),
     };
-    Ok((esq, dir, No { nome, setor, tamanho, atributos }))
+    Ok((
+        esq,
+        dir,
+        No {
+            nome,
+            setor,
+            tamanho,
+            atributos,
+        },
+    ))
 }
 
 /// Recusa nomes que não podem virar arquivo com segurança: sairiam da pasta
@@ -232,7 +282,11 @@ pub fn validar_nome(nome: &str, caminho: &str) -> Resultado<()> {
     if nome == "." || nome == ".." {
         return recusar("nome reservado que apontaria para fora do diretório");
     }
-    if let Some(c) = nome.chars().find(|c| matches!(c, '/' | '\\' | ':' | '<' | '>' | '"' | '|' | '?' | '*') || (*c as u32) < 0x20 || *c as u32 == 0x7F) {
+    if let Some(c) = nome.chars().find(|c| {
+        matches!(c, '/' | '\\' | ':' | '<' | '>' | '"' | '|' | '?' | '*')
+            || (*c as u32) < 0x20
+            || *c as u32 == 0x7F
+    }) {
         return recusar(&format!("tem o caractere proibido {c:?}"));
     }
     if nome.ends_with(' ') || nome.ends_with('.') {
@@ -240,8 +294,8 @@ pub fn validar_nome(nome: &str, caminho: &str) -> Resultado<()> {
     }
     let base = nome.split('.').next().unwrap_or("").to_ascii_uppercase();
     const RESERVADOS: [&str; 22] = [
-        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
-        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+        "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
     ];
     if RESERVADOS.contains(&base.as_str()) {
         return recusar("é um nome de dispositivo reservado no Windows");

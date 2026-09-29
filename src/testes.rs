@@ -28,8 +28,11 @@ struct Temp(PathBuf);
 impl Temp {
     fn nova() -> Self {
         static N: AtomicU32 = AtomicU32::new(0);
-        let p = std::env::temp_dir()
-            .join(format!("extract-xiso-pt-teste-{}-{}", std::process::id(), N.fetch_add(1, Ordering::Relaxed)));
+        let p = std::env::temp_dir().join(format!(
+            "extract-xiso-pt-teste-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::Relaxed)
+        ));
         fs::create_dir_all(&p).unwrap();
         Temp(p)
     }
@@ -87,7 +90,9 @@ struct Construtor {
 
 impl Construtor {
     fn novo(setores: usize) -> Self {
-        Self { bytes: vec![0; setores * S] }
+        Self {
+            bytes: vec![0; setores * S],
+        }
     }
 
     fn por(&mut self, setor: u32, dados: &[u8]) -> &mut Self {
@@ -131,7 +136,10 @@ fn imagem_valida() -> Construtor {
         (b"vazia", 35, S as u32, DIR), // um setor só de 0xFF
         (b"zero", 0, 0, ARQ),
     ]);
-    c.raiz(33, raiz.len() as u32).por(33, &raiz).por(34, &sub).por(35, &[0xFF; S]);
+    c.raiz(33, raiz.len() as u32)
+        .por(33, &raiz)
+        .por(34, &sub)
+        .por(35, &[0xFF; S]);
     c.por(36, &vec![0xAB; 3000]).por(38, b"oi!\n\n");
     c
 }
@@ -172,7 +180,8 @@ fn arvore_balanceada_sai_em_ordem() {
 fn lista_degenerada_grande_nao_estoura_a_pilha() {
     let t = Temp::nova();
     let nomes: Vec<String> = (0..5000).map(|i| format!("arq_{i:05}")).collect();
-    let ents: Vec<(&[u8], u32, u32, u8)> = nomes.iter().map(|n| (n.as_bytes(), 0, 0, ARQ)).collect();
+    let ents: Vec<(&[u8], u32, u32, u8)> =
+        nomes.iter().map(|n| (n.as_bytes(), 0, 0, ARQ)).collect();
     let tab = tabela(&ents);
     let mut img = Construtor::novo(34);
     img.raiz(33, tab.len() as u32).por(33, &tab);
@@ -186,15 +195,34 @@ fn recusa_nome(nome: &[u8]) {
     img.raiz(33, tab.len() as u32).por(33, &tab);
     match ler(&img.gravar(&t.0)) {
         Err(Erro::NomeInseguro(_)) => {}
-        r => panic!("nome {:?} deveria ser recusado, veio {r:?}", String::from_utf8_lossy(nome)),
+        r => panic!(
+            "nome {:?} deveria ser recusado, veio {r:?}",
+            String::from_utf8_lossy(nome)
+        ),
     }
 }
 
 #[test]
 fn recusa_nomes_que_saem_do_destino_ou_quebram_no_windows() {
     for n in [
-        &b".."[..], b".", b"", b"a/b", b"..\\x", b"c:x", b"a\0b", b"x\n", b"fim.", b"fim ", b"CON", b"nul.txt",
-        b"com1.dat", b"a*b", b"a?b", b"a|b", b"\"a\"", b"<a>",
+        &b".."[..],
+        b".",
+        b"",
+        b"a/b",
+        b"..\\x",
+        b"c:x",
+        b"a\0b",
+        b"x\n",
+        b"fim.",
+        b"fim ",
+        b"CON",
+        b"nul.txt",
+        b"com1.dat",
+        b"a*b",
+        b"a?b",
+        b"a|b",
+        b"\"a\"",
+        b"<a>",
     ] {
         recusa_nome(n);
     }
@@ -303,7 +331,10 @@ fn recusa_imagem_sem_assinatura_ou_truncada() {
 }
 
 fn opcoes() -> Opcoes {
-    Opcoes { sem_atualizacao: false, sobrescrever: false }
+    Opcoes {
+        sem_atualizacao: false,
+        sobrescrever: false,
+    }
 }
 
 fn extrair_em(iso: &Path, destino: &Path, o: &Opcoes) -> Result<u64, Erro> {
@@ -334,11 +365,22 @@ fn recusa_destino_com_arquivos_sem_sobrescrever() {
     let d = t.0.join("saida");
     fs::create_dir(&d).unwrap();
     fs::write(d.join("meu.txt"), b"importante").unwrap();
-    assert!(matches!(extrair_em(&iso, &d, &opcoes()), Err(Erro::Destino(_))));
+    assert!(matches!(
+        extrair_em(&iso, &d, &opcoes()),
+        Err(Erro::Destino(_))
+    ));
     assert_eq!(fs::read(d.join("meu.txt")).unwrap(), b"importante");
     assert_eq!(fs::read_dir(&d).unwrap().count(), 1);
     // com --sobrescrever extrai e não apaga o que já estava lá
-    extrair_em(&iso, &d, &Opcoes { sobrescrever: true, ..opcoes() }).unwrap();
+    extrair_em(
+        &iso,
+        &d,
+        &Opcoes {
+            sobrescrever: true,
+            ..opcoes()
+        },
+    )
+    .unwrap();
     assert_eq!(fs::read(d.join("meu.txt")).unwrap(), b"importante");
     assert!(d.join("a.bin").is_file());
 }
@@ -354,17 +396,30 @@ fn cancelamento_apaga_so_o_que_criou() {
     let r = extrair_em(&iso, &d, &opcoes());
     sistema::limpar_cancelamento();
     assert!(matches!(r, Err(Erro::Cancelado)));
-    assert!(!d.exists(), "a pasta criada pela extração deveria ter sido apagada");
+    assert!(
+        !d.exists(),
+        "a pasta criada pela extração deveria ter sido apagada"
+    );
 
     // numa pasta que já existia, a pasta e o que havia nela ficam
     let d = t.0.join("existente");
     fs::create_dir(&d).unwrap();
     fs::write(d.join("meu.txt"), b"x").unwrap();
     sistema::marcar_cancelamento();
-    let r = extrair_em(&iso, &d, &Opcoes { sobrescrever: true, ..opcoes() });
+    let r = extrair_em(
+        &iso,
+        &d,
+        &Opcoes {
+            sobrescrever: true,
+            ..opcoes()
+        },
+    );
     sistema::limpar_cancelamento();
     assert!(matches!(r, Err(Erro::Cancelado)));
-    let sobrou: Vec<_> = fs::read_dir(&d).unwrap().map(|e| e.unwrap().file_name()).collect();
+    let sobrou: Vec<_> = fs::read_dir(&d)
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
     assert_eq!(sobrou, ["meu.txt"]);
 }
 
@@ -373,12 +428,26 @@ fn sem_atualizacao_pula_a_pasta_systemupdate() {
     let _v = EXTRACAO.lock().unwrap_or_else(|e| e.into_inner());
     let t = Temp::nova();
     let upd = tabela(&[(b"su.bin", 36, 4, ARQ)]);
-    let raiz = tabela(&[(b"$SystemUpdate", 34, upd.len() as u32, DIR), (b"default.xex", 36, 4, ARQ)]);
+    let raiz = tabela(&[
+        (b"$SystemUpdate", 34, upd.len() as u32, DIR),
+        (b"default.xex", 36, 4, ARQ),
+    ]);
     let mut img = Construtor::novo(37);
-    img.raiz(33, raiz.len() as u32).por(33, &raiz).por(34, &upd).por(36, b"XEX2");
+    img.raiz(33, raiz.len() as u32)
+        .por(33, &raiz)
+        .por(34, &upd)
+        .por(36, b"XEX2");
     let iso = img.gravar(&t.0);
     let d = t.0.join("saida");
-    extrair_em(&iso, &d, &Opcoes { sem_atualizacao: true, ..opcoes() }).unwrap();
+    extrair_em(
+        &iso,
+        &d,
+        &Opcoes {
+            sem_atualizacao: true,
+            ..opcoes()
+        },
+    )
+    .unwrap();
     assert!(!d.join("$SystemUpdate").exists());
     assert!(d.join("default.xex").is_file());
 }
@@ -405,7 +474,9 @@ fn fuzz_imagem_corrompida() {
     let base = imagem_valida();
     let mut rng = Aleatorio(0x5EED_1234_ABCD_0001);
     for rodada in 0..3000 {
-        let mut c = Construtor { bytes: base.bytes.clone() };
+        let mut c = Construtor {
+            bytes: base.bytes.clone(),
+        };
         let quantos = 1 + rng.prox() % 8;
         for _ in 0..quantos {
             // descritor (setor 32) e tabelas (33..=35)
@@ -426,6 +497,204 @@ fn fuzz_imagem_corrompida() {
         }
     }
     // nada além da imagem e das saídas apagadas
-    let resto: Vec<_> = fs::read_dir(&t.0).unwrap().map(|e| e.unwrap().file_name()).collect();
+    let resto: Vec<_> = fs::read_dir(&t.0)
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
     assert_eq!(resto, ["teste.iso"]);
+}
+
+// ---------------------------------------------------------------------------
+// criar / reescrever
+// ---------------------------------------------------------------------------
+
+use crate::criar;
+
+fn criar_de(pasta: &Path, saida: &Path) -> Result<criar::Resumo, Erro> {
+    let o = criar::Opcoes {
+        sobrescrever: false,
+        sem_atualizacao: false,
+    };
+    let fonte = criar::Fonte::Pasta(pasta);
+    let prep = criar::preparar(&fonte, &o)?;
+    let p = Progresso::novo("", "", prep.bytes, true);
+    criar::gravar(fonte, prep, saida, &o, &p)
+}
+
+/// Compara duas pastas: mesmos nomes, mesmos bytes.
+fn pastas_iguais(a: &Path, b: &Path) {
+    let mut na: Vec<_> = fs::read_dir(a)
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    let mut nb: Vec<_> = fs::read_dir(b)
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    na.sort();
+    nb.sort();
+    assert_eq!(na, nb, "{}", a.display());
+    for n in na {
+        let (x, y) = (a.join(&n), b.join(&n));
+        if x.is_dir() {
+            pastas_iguais(&x, &y);
+        } else {
+            assert_eq!(
+                fs::read(&x).unwrap(),
+                fs::read(&y).unwrap(),
+                "{}",
+                x.display()
+            );
+        }
+    }
+}
+
+fn pasta_de_jogo(raiz: &Path) {
+    fs::create_dir_all(raiz.join("media/sons")).unwrap();
+    fs::create_dir_all(raiz.join("vazia")).unwrap();
+    fs::create_dir_all(raiz.join("muitos")).unwrap();
+    fs::write(raiz.join("default.xex"), b"XEX2 falso").unwrap();
+    fs::write(raiz.join("zero.bin"), b"").unwrap();
+    fs::write(
+        raiz.join("media/grande.bin"),
+        (0..3_000_000u32).map(|i| (i * 7) as u8).collect::<Vec<_>>(),
+    )
+    .unwrap();
+    fs::write(raiz.join("media/sons/Ação.wav"), b"RIFF").unwrap();
+    // o bastante para a tabela ocupar vários setores
+    for i in 0..700 {
+        fs::write(
+            raiz.join(format!("muitos/Arq_{i:04}_{}.dat", "x".repeat(i % 40))),
+            vec![i as u8; i],
+        )
+        .unwrap();
+    }
+}
+
+#[test]
+fn criar_e_extrair_devolve_a_mesma_pasta() {
+    let _v = EXTRACAO.lock().unwrap_or_else(|e| e.into_inner());
+    let t = Temp::nova();
+    let jogo = t.0.join("jogo");
+    pasta_de_jogo(&jogo);
+    let iso = t.0.join("jogo.iso");
+    let r = criar_de(&jogo, &iso).unwrap();
+    assert_eq!(r.arquivos, 704);
+    assert_eq!(fs::metadata(&iso).unwrap().len() % (64 * 1024), 0);
+
+    // a árvore gravada está em ordem e cada tabela é uma árvore balanceada
+    let mut img = Imagem::abrir(&iso).unwrap();
+    let raiz = arvore::ler(&mut img).unwrap();
+    let muitos = raiz.iter().find(|e| e.nome == "muitos").unwrap();
+    assert!(
+        muitos.tamanho > 2048 * 3,
+        "a tabela deveria ter vários setores"
+    );
+    let nomes: Vec<String> = muitos
+        .filhos
+        .iter()
+        .map(|e| e.nome.to_ascii_uppercase())
+        .collect();
+    let mut ordenados = nomes.clone();
+    ordenados.sort();
+    assert_eq!(nomes, ordenados);
+
+    let d = t.0.join("saida");
+    extrair_em(&iso, &d, &opcoes()).unwrap();
+    pastas_iguais(&jogo, &d);
+
+    // reescrever a imagem criada dá o mesmo conteúdo
+    let o = criar::Opcoes {
+        sobrescrever: false,
+        sem_atualizacao: false,
+    };
+    let mut img = Imagem::abrir(&iso).unwrap();
+    let raiz = arvore::ler(&mut img).unwrap();
+    let fonte = criar::Fonte::Imagem(&mut img, raiz);
+    let prep = criar::preparar(&fonte, &o).unwrap();
+    let p = Progresso::novo("", "", prep.bytes, true);
+    let iso2 = t.0.join("de_novo.iso");
+    criar::gravar(fonte, prep, &iso2, &o, &p).unwrap();
+    let d2 = t.0.join("saida2");
+    extrair_em(&iso2, &d2, &opcoes()).unwrap();
+    pastas_iguais(&jogo, &d2);
+}
+
+#[test]
+fn criar_recusa_o_que_nao_daria_uma_imagem_valida() {
+    let t = Temp::nova();
+    // nomes iguais sem diferenciar maiúsculas (possível no Linux)
+    let j = t.0.join("dup");
+    fs::create_dir_all(&j).unwrap();
+    fs::write(j.join("A.txt"), b"1").unwrap();
+    fs::write(j.join("a.TXT"), b"2").unwrap();
+    assert!(matches!(
+        criar_de(&j, &t.0.join("dup.iso")),
+        Err(Erro::Destino(_))
+    ));
+
+    // nome que o Windows não aceita
+    let j = t.0.join("res");
+    fs::create_dir_all(&j).unwrap();
+    fs::write(j.join("aux.txt"), b"1").unwrap();
+    assert!(matches!(
+        criar_de(&j, &t.0.join("res.iso")),
+        Err(Erro::Destino(_))
+    ));
+
+    // imagem dentro da própria pasta de origem
+    let j = t.0.join("dentro");
+    fs::create_dir_all(&j).unwrap();
+    fs::write(j.join("a"), b"1").unwrap();
+    assert!(matches!(
+        criar_de(&j, &j.join("x.iso")),
+        Err(Erro::Destino(_))
+    ));
+
+    // saída que já existe
+    let j = t.0.join("ok");
+    fs::create_dir_all(&j).unwrap();
+    fs::write(j.join("a"), b"1").unwrap();
+    fs::write(t.0.join("ja.iso"), b"meu").unwrap();
+    assert!(matches!(
+        criar_de(&j, &t.0.join("ja.iso")),
+        Err(Erro::Destino(_))
+    ));
+    assert_eq!(fs::read(t.0.join("ja.iso")).unwrap(), b"meu");
+
+    // link simbólico para um ancestral
+    #[cfg(unix)]
+    {
+        let j = t.0.join("laco");
+        fs::create_dir_all(j.join("sub")).unwrap();
+        std::os::unix::fs::symlink(&j, j.join("sub/volta")).unwrap();
+        assert!(matches!(
+            criar_de(&j, &t.0.join("laco.iso")),
+            Err(Erro::Destino(_))
+        ));
+    }
+    // nenhum temporário ficou para trás
+    assert!(fs::read_dir(&t.0).unwrap().all(|e| {
+        !e.unwrap()
+            .file_name()
+            .to_string_lossy()
+            .ends_with(".parcial")
+    }));
+}
+
+#[test]
+fn criar_cancelado_nao_deixa_nada() {
+    let _v = EXTRACAO.lock().unwrap_or_else(|e| e.into_inner());
+    let t = Temp::nova();
+    let jogo = t.0.join("jogo");
+    pasta_de_jogo(&jogo);
+    sistema::marcar_cancelamento();
+    let r = criar_de(&jogo, &t.0.join("jogo.iso"));
+    sistema::limpar_cancelamento();
+    assert!(matches!(r, Err(Erro::Cancelado)));
+    let sobrou: Vec<_> = fs::read_dir(&t.0)
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    assert_eq!(sobrou, ["jogo"]);
 }

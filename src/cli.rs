@@ -46,4 +46,44 @@ pub enum Comando {
         #[arg(long)]
         progresso_json: bool,
     },
+
+    /// Cria uma imagem XISO a partir de uma pasta (jogo de Xbox ou Xbox 360).
+    Criar {
+        /// Pasta com o conteúdo do disco (default.xbe ou default.xex na raiz).
+        pasta: PathBuf,
+        /// Imagem a criar. Sem ela, <pasta>.iso ao lado da pasta.
+        #[arg(short, long)]
+        saida: Option<PathBuf>,
+        /// Não inclui a pasta $SystemUpdate (atualização do console).
+        #[arg(short = 'u', long)]
+        sem_atualizacao: bool,
+        /// Substitui a imagem de saída se ela já existir.
+        #[arg(long)]
+        sobrescrever: bool,
+        /// Relata o progresso como uma linha JSON por evento em stdout.
+        #[arg(long)]
+        progresso_json: bool,
+    },
+
+    /// Regrava uma imagem como XISO enxuta: tira a partição de vídeo e o
+    /// espaço vazio de discos XGD1/XGD2/XGD3 e reorganiza as tabelas.
+    Reescrever {
+        imagem: PathBuf,
+        /// Imagem a criar. Sem ela, <nome>.xiso.iso ao lado da original.
+        #[arg(short, long, conflicts_with = "substituir")]
+        saida: Option<PathBuf>,
+        /// Não inclui a pasta $SystemUpdate (atualização do console).
+        #[arg(short = 'u', long)]
+        sem_atualizacao: bool,
+        /// Substitui a imagem de saída se ela já existir.
+        #[arg(long)]
+        sobrescrever: bool,
+        /// Troca a imagem original pela reescrita (só depois de ela estar
+        /// pronta e conferida).
+        #[arg(long)]
+        substituir: bool,
+        /// Relata o progresso como uma linha JSON por evento em stdout.
+        #[arg(long)]
+        progresso_json: bool,
+    },
 }

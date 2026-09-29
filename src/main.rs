@@ -3,12 +3,14 @@
 //!   imagem.rs    onde fica a partição, descritor de volume, leitura segura
 //!   arvore.rs    árvore de arquivos (ponteiros da árvore binária, validada)
 //!   extrair.rs   extração com saída atômica e desfazer em caso de falha
+//!   criar.rs     gravação de XISO a partir de pasta ou de outra imagem
 //!   progresso.rs barra no terminal ou eventos JSON (--progresso-json)
 //!   terminal.rs  cores, caixas e console do Windows (do iso2god-pt)
 //!   sistema.rs   espaço livre e Ctrl+C/SIGTERM limpos (do iso2god-pt)
 
 mod arvore;
 mod cli;
+mod criar;
 mod erro;
 mod extrair;
 mod imagem;
@@ -34,7 +36,19 @@ fn main() {
     terminal::preparar_console();
 
     let cli = Cli::parse();
-    let json = matches!(&cli.comando, Comando::Extrair { progresso_json: true, .. });
+    let json = matches!(
+        &cli.comando,
+        Comando::Extrair {
+            progresso_json: true,
+            ..
+        } | Comando::Criar {
+            progresso_json: true,
+            ..
+        } | Comando::Reescrever {
+            progresso_json: true,
+            ..
+        }
+    );
     match executar(cli.comando) {
         Ok(()) => {}
         Err(Erro::Cancelado) => {
@@ -58,16 +72,71 @@ fn executar(comando: Comando) -> Resultado<()> {
     match comando {
         Comando::Info { imagem, json } => info(&imagem, json),
         Comando::Listar { imagem, json } => listar(&imagem, json),
-        Comando::Extrair { imagem, destino, sem_atualizacao, sobrescrever, progresso_json } => {
+        Comando::Extrair {
+            imagem,
+            destino,
+            sem_atualizacao,
+            sobrescrever,
+            progresso_json,
+        } => {
             let destino = destino.unwrap_or_else(|| extrair::destino_padrao(&imagem));
-            extrair_cmd(&imagem, &destino, extrair::Opcoes { sem_atualizacao, sobrescrever }, progresso_json)
+            extrair_cmd(
+                &imagem,
+                &destino,
+                extrair::Opcoes {
+                    sem_atualizacao,
+                    sobrescrever,
+                },
+                progresso_json,
+            )
+        }
+        Comando::Criar {
+            pasta,
+            saida,
+            sem_atualizacao,
+            sobrescrever,
+            progresso_json,
+        } => {
+            let saida = saida.unwrap_or_else(|| criar::saida_padrao_pasta(&pasta));
+            criar_cmd(
+                &pasta,
+                &saida,
+                criar::Opcoes {
+                    sobrescrever,
+                    sem_atualizacao,
+                },
+                progresso_json,
+            )
+        }
+        Comando::Reescrever {
+            imagem,
+            saida,
+            sem_atualizacao,
+            sobrescrever,
+            substituir,
+            progresso_json,
+        } => {
+            let saida = saida.unwrap_or_else(|| criar::saida_padrao_reescrita(&imagem));
+            reescrever_cmd(
+                &imagem,
+                &saida,
+                substituir,
+                criar::Opcoes {
+                    sobrescrever,
+                    sem_atualizacao,
+                },
+                progresso_json,
+            )
         }
     }
 }
 
 /// Console pelo executável na raiz: default.xex = Xbox 360, default.xbe = Xbox.
 fn console(raiz: &[arvore::Entrada]) -> Option<&'static str> {
-    let tem = |n: &str| raiz.iter().any(|e| !e.eh_diretorio() && e.nome.eq_ignore_ascii_case(n));
+    let tem = |n: &str| {
+        raiz.iter()
+            .any(|e| !e.eh_diretorio() && e.nome.eq_ignore_ascii_case(n))
+    };
     if tem("default.xex") {
         Some("Xbox 360")
     } else if tem("default.xbe") {
@@ -91,7 +160,9 @@ fn data(filetime: u64) -> Option<String> {
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let a = yoe + era * 400 + i64::from(m <= 2);
-    (1990..=2100).contains(&a).then(|| format!("{a:04}-{m:02}-{d:02}"))
+    (1990..=2100)
+        .contains(&a)
+        .then(|| format!("{a:04}-{m:02}-{d:02}"))
 }
 
 #[derive(serde::Serialize)]
@@ -123,15 +194,50 @@ fn info(caminho: &Path, json: bool) -> Resultado<()> {
         return Ok(());
     }
     let tema = Tema::detectar();
-    println!("{}", tema.caixa_titulo(&titulo_app(), emo::APP(), LARGURA, true));
-    println!("{}", tema.campo("Imagem", &terminal::encurtar_home(caminho), emo::ORIGEM(), 16));
+    println!(
+        "{}",
+        tema.caixa_titulo(&titulo_app(), emo::APP(), LARGURA, true)
+    );
+    println!(
+        "{}",
+        tema.campo(
+            "Imagem",
+            &terminal::encurtar_home(caminho),
+            emo::ORIGEM(),
+            16
+        )
+    );
     println!("{}", tema.campo("Layout", i.layout, emo::DISCO(), 16));
-    println!("{}", tema.campo("Console", i.console.unwrap_or("não identificado"), emo::JOGO(), 16));
+    println!(
+        "{}",
+        tema.campo(
+            "Console",
+            i.console.unwrap_or("não identificado"),
+            emo::JOGO(),
+            16
+        )
+    );
     if let Some(d) = &i.criacao {
         println!("{}", tema.campo("Criada em", d, emo::TEMPO(), 16));
     }
-    println!("{}", tema.campo("Conteúdo", &format!("{} arquivos em {} pastas · {}", i.arquivos, i.diretorios, fmt_bytes(i.bytes)), emo::DADOS(), 16));
-    println!("{}", tema.campo("Volume", &fmt_bytes(i.tamanho_volume), emo::RESUMO(), 16));
+    println!(
+        "{}",
+        tema.campo(
+            "Conteúdo",
+            &format!(
+                "{} arquivos em {} pastas · {}",
+                i.arquivos,
+                i.diretorios,
+                fmt_bytes(i.bytes)
+            ),
+            emo::DADOS(),
+            16
+        )
+    );
+    println!(
+        "{}",
+        tema.campo("Volume", &fmt_bytes(i.tamanho_volume), emo::RESUMO(), 16)
+    );
     Ok(())
 }
 
@@ -145,18 +251,37 @@ fn listar(caminho: &Path, json: bool) -> Resultado<()> {
     let tema = Tema::detectar();
     arvore::percorrer(&raiz, &mut |e, caminho| {
         if e.eh_diretorio() {
-            println!("{}", tema.c(&format!("{caminho}/"), &[&terminal::c::azul()]));
+            println!(
+                "{}",
+                tema.c(&format!("{caminho}/"), &[&terminal::c::azul()])
+            );
         } else {
-            println!("{caminho}  {}", tema.c(&fmt_bytes(e.tamanho as u64), &[&terminal::c::cinza()]));
+            println!(
+                "{caminho}  {}",
+                tema.c(&fmt_bytes(e.tamanho as u64), &[&terminal::c::cinza()])
+            );
         }
     });
     let t = arvore::totais(&raiz);
     println!();
-    tema.info_linha(emo::RESUMO(), &format!("{} arquivos em {} pastas · {}", t.arquivos, t.diretorios, fmt_bytes(t.bytes)));
+    tema.info_linha(
+        emo::RESUMO(),
+        &format!(
+            "{} arquivos em {} pastas · {}",
+            t.arquivos,
+            t.diretorios,
+            fmt_bytes(t.bytes)
+        ),
+    );
     Ok(())
 }
 
-fn extrair_cmd(caminho: &Path, destino: &Path, opcoes: extrair::Opcoes, json: bool) -> Resultado<()> {
+fn extrair_cmd(
+    caminho: &Path,
+    destino: &Path,
+    opcoes: extrair::Opcoes,
+    json: bool,
+) -> Resultado<()> {
     progresso::Progresso::fase(json, "lendo", "Lendo a árvore de arquivos da imagem...");
     let mut img = Imagem::abrir(caminho)?;
     let raiz = extrair::selecionar(arvore::ler(&mut img)?, &opcoes);
@@ -164,10 +289,37 @@ fn extrair_cmd(caminho: &Path, destino: &Path, opcoes: extrair::Opcoes, json: bo
 
     let tema = Tema::detectar();
     if !json {
-        println!("{}", tema.caixa_titulo(&titulo_app(), emo::APP(), LARGURA, true));
-        println!("{}", tema.campo("Imagem", &terminal::encurtar_home(caminho), emo::ORIGEM(), 16));
-        println!("{}", tema.campo("Destino", &terminal::encurtar_home(destino), emo::DESTINO(), 16));
-        println!("{}", tema.campo("Conteúdo", &format!("{} arquivos · {}", t.arquivos, fmt_bytes(t.bytes)), emo::DADOS(), 16));
+        println!(
+            "{}",
+            tema.caixa_titulo(&titulo_app(), emo::APP(), LARGURA, true)
+        );
+        println!(
+            "{}",
+            tema.campo(
+                "Imagem",
+                &terminal::encurtar_home(caminho),
+                emo::ORIGEM(),
+                16
+            )
+        );
+        println!(
+            "{}",
+            tema.campo(
+                "Destino",
+                &terminal::encurtar_home(destino),
+                emo::DESTINO(),
+                16
+            )
+        );
+        println!(
+            "{}",
+            tema.campo(
+                "Conteúdo",
+                &format!("{} arquivos · {}", t.arquivos, fmt_bytes(t.bytes)),
+                emo::DADOS(),
+                16
+            )
+        );
     }
     progresso::Progresso::fase(json, "extraindo", "Extraindo...");
     let p = progresso::Progresso::novo("Extraindo", emo::PROGRESSO(), t.bytes, json);
@@ -184,6 +336,148 @@ fn extrair_cmd(caminho: &Path, destino: &Path, opcoes: extrair::Opcoes, json: bo
     p.concluido(&destino.to_string_lossy(), &msg);
     if !json {
         tema.sucesso(&msg);
+    }
+    Ok(())
+}
+
+fn criar_cmd(pasta: &Path, saida: &Path, opcoes: criar::Opcoes, json: bool) -> Resultado<()> {
+    progresso::Progresso::fase(json, "lendo", "Lendo a pasta...");
+    let fonte = criar::Fonte::Pasta(pasta);
+    let prep = criar::preparar(&fonte, &opcoes)?;
+    let tema = Tema::detectar();
+    if !json {
+        println!(
+            "{}",
+            tema.caixa_titulo(&titulo_app(), emo::APP(), LARGURA, true)
+        );
+        println!(
+            "{}",
+            tema.campo("Pasta", &terminal::encurtar_home(pasta), emo::ORIGEM(), 16)
+        );
+        println!(
+            "{}",
+            tema.campo(
+                "Imagem",
+                &terminal::encurtar_home(saida),
+                emo::DESTINO(),
+                16
+            )
+        );
+        println!(
+            "{}",
+            tema.campo(
+                "Conteúdo",
+                &format!("{} arquivos · {}", prep.arquivos, fmt_bytes(prep.bytes)),
+                emo::DADOS(),
+                16
+            )
+        );
+    }
+    gravar_cmd(fonte, prep, saida, &opcoes, json, "criando", "Criando")
+}
+
+fn reescrever_cmd(
+    caminho: &Path,
+    saida: &Path,
+    substituir: bool,
+    opcoes: criar::Opcoes,
+    json: bool,
+) -> Resultado<()> {
+    progresso::Progresso::fase(json, "lendo", "Lendo a árvore de arquivos da imagem...");
+    let mut img = Imagem::abrir(caminho)?;
+    let raiz = arvore::ler(&mut img)?;
+    let layout = img.layout.rotulo();
+    let tema = Tema::detectar();
+    if !json {
+        println!(
+            "{}",
+            tema.caixa_titulo(&titulo_app(), emo::APP(), LARGURA, true)
+        );
+        println!(
+            "{}",
+            tema.campo(
+                "Imagem",
+                &format!("{} ({layout})", terminal::encurtar_home(caminho)),
+                emo::ORIGEM(),
+                16
+            )
+        );
+        let destino = if substituir {
+            "no lugar da original".to_string()
+        } else {
+            terminal::encurtar_home(saida)
+        };
+        println!("{}", tema.campo("Nova", &destino, emo::DESTINO(), 16));
+    }
+    let antes = std::fs::metadata(caminho)?.len();
+    let fonte = criar::Fonte::Imagem(&mut img, raiz);
+    let prep = criar::preparar(&fonte, &opcoes)?;
+    // com --substituir grava ao lado e só troca depois de pronta e relida
+    let alvo = if substituir {
+        let mut n = caminho.as_os_str().to_owned();
+        n.push(".extract-xiso-pt.nova");
+        std::path::PathBuf::from(n)
+    } else {
+        saida.to_path_buf()
+    };
+    let opcoes_alvo = criar::Opcoes {
+        sobrescrever: opcoes.sobrescrever || substituir,
+        ..opcoes
+    };
+    gravar_cmd(
+        fonte,
+        prep,
+        &alvo,
+        &opcoes_alvo,
+        json,
+        "reescrevendo",
+        "Reescrevendo",
+    )?;
+    drop(img); // no Windows um arquivo aberto não pode ser substituído
+    let depois = std::fs::metadata(&alvo)?.len();
+    if substituir && let Err(e) = std::fs::rename(&alvo, caminho) {
+        std::fs::remove_file(&alvo).ok();
+        return Err(e.into());
+    }
+    if !json {
+        tema.info_linha(
+            emo::RESUMO(),
+            &format!(
+                "{} → {} ({} a menos)",
+                fmt_bytes(antes),
+                fmt_bytes(depois),
+                fmt_bytes(antes.saturating_sub(depois))
+            ),
+        );
+    }
+    Ok(())
+}
+
+fn gravar_cmd(
+    fonte: criar::Fonte,
+    prep: criar::Preparado,
+    saida: &Path,
+    opcoes: &criar::Opcoes,
+    json: bool,
+    fase: &str,
+    rotulo: &str,
+) -> Resultado<()> {
+    progresso::Progresso::fase(json, fase, &format!("{rotulo}..."));
+    let p = progresso::Progresso::novo(rotulo, emo::PROGRESSO(), prep.bytes, json);
+    let r = criar::gravar(fonte, prep, saida, opcoes, &p);
+    p.terminar(r.is_ok());
+    let resumo = r?;
+    let msg = format!(
+        "Concluído em {:.1}s: {} arquivos ({}) numa imagem de {} em {}",
+        p.duracao(),
+        resumo.arquivos,
+        fmt_bytes(resumo.bytes_conteudo),
+        fmt_bytes(resumo.tamanho_imagem),
+        saida.display()
+    );
+    p.concluido(&saida.to_string_lossy(), &msg);
+    if !json {
+        Tema::detectar().sucesso(&msg);
     }
     Ok(())
 }
