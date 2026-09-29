@@ -4,6 +4,7 @@
 //!   arvore.rs    árvore de arquivos (ponteiros da árvore binária, validada)
 //!   extrair.rs   extração com saída atômica e desfazer em caso de falha
 //!   criar.rs     gravação de XISO a partir de pasta ou de outra imagem
+//!   dats.rs      .dat do Redump instalados (lidos também de .zip)
 //!   verificar.rs integridade: estrutura, leitura completa, hashes e .dat
 //!   progresso.rs barra no terminal ou eventos JSON (--progresso-json)
 //!   terminal.rs  cores, caixas e console do Windows (do iso2god-pt)
@@ -12,6 +13,7 @@
 mod arvore;
 mod cli;
 mod criar;
+mod dats;
 mod erro;
 mod extrair;
 mod imagem;
@@ -97,9 +99,11 @@ fn executar(comando: Comando) -> Resultado<()> {
         Comando::Verificar {
             imagem,
             dat,
+            sem_dat,
             json,
             progresso_json,
-        } => verificar_cmd(&imagem, dat.as_deref(), json, progresso_json),
+        } => verificar_cmd(&imagem, dat.as_deref(), sem_dat, json, progresso_json),
+        Comando::Dats { acao } => dats_cmd(acao.unwrap_or(cli::AcaoDats::Listar)),
         Comando::Criar {
             pasta,
             saida,
@@ -515,11 +519,20 @@ fn gravar_cmd(
 fn verificar_cmd(
     caminho: &Path,
     dat: Option<&Path>,
+    sem_dat: bool,
     json: bool,
     progresso_json: bool,
 ) -> Resultado<()> {
     let tema = Tema::detectar();
     let texto = !json && !progresso_json;
+    // --dat pedido é carregado antes (um caminho errado falha já); sem ele,
+    // os instalados (um instalado estragado só gera aviso)
+    let (lista_dats, avisos_dats) = match (dat, sem_dat) {
+        (Some(d), _) => (dats::carregar(d)?, Vec::new()),
+        (None, true) => (Vec::new(), Vec::new()),
+        (None, false) => dats::instalados(),
+    };
+    let explicito = dat.is_some();
     if texto {
         println!(
             "{}",
@@ -536,14 +549,32 @@ fn verificar_cmd(
         );
     }
     progresso::Progresso::fase(progresso_json, "estrutura", "Conferindo a estrutura...");
-    let rel = verificar::verificar(caminho, dat, |total| {
+    if texto {
+        for a in &avisos_dats {
+            tema.aviso(a);
+        }
+        if !lista_dats.is_empty() {
+            let nomes: Vec<String> = lista_dats
+                .iter()
+                .map(|d| format!("{} ({})", d.sistema, d.versao))
+                .collect();
+            println!(
+                "{}",
+                tema.campo(".dat", &nomes.join(" · "), emo::DADOS(), 16)
+            );
+        }
+    }
+    let rel = verificar::verificar(caminho, &lista_dats, |total| {
         progresso::Progresso::fase(progresso_json, "hashes", "Lendo a imagem inteira...");
         progresso::Progresso::novo_quieto("Lendo", emo::PROGRESSO(), total, progresso_json, json)
     })?;
-    let nao_confere = rel
-        .dat
-        .as_ref()
-        .is_some_and(|d| !matches!(d.situacao, verificar::Situacao::Confere));
+    let nao_confere = rel.dat.as_ref().is_some_and(|d| match d.situacao {
+        verificar::Situacao::Confere => false,
+        verificar::Situacao::NaoConfere => true,
+        // com os instalados, uma imagem que não é do Redump (enxuta,
+        // traduzida, caseira) é normal; com --dat pedido, não confere
+        verificar::Situacao::NaoEncontrada => explicito,
+    });
 
     if json {
         println!("{}", serde_json::to_string(&rel).unwrap_or_default());
@@ -600,11 +631,15 @@ fn verificar_cmd(
                 tema.sucesso("Imagem íntegra: a estrutura confere e todos os bytes foram lidos.")
             }
             Some(d) => match d.situacao {
-                verificar::Situacao::Confere => tema.sucesso(&format!(
-                    "Confere com o .dat: {} ({})",
-                    d.jogo.as_deref().unwrap_or("?"),
-                    d.rom.as_deref().unwrap_or("?")
-                )),
+                verificar::Situacao::Confere => {
+                    if let Some(f) = &d.fonte {
+                        println!("{}", tema.campo("Redump", f, emo::DADOS(), 16));
+                    }
+                    tema.sucesso(&format!(
+                        "Imagem original, idêntica ao Redump: {}",
+                        d.jogo.as_deref().unwrap_or("?")
+                    ))
+                }
                 verificar::Situacao::NaoConfere => tema.erro(&format!(
                     "Não confere: o .dat tem {} com outro SHA-1 — a imagem foi modificada, está \
                      corrompida ou é de outra versão",
@@ -616,13 +651,66 @@ fn verificar_cmd(
                     } else {
                         ""
                     };
-                    tema.aviso(&format!("O SHA-1 não está no .dat{dica}"))
+                    let onde = if explicito {
+                        "no .dat"
+                    } else {
+                        "em nenhum .dat instalado"
+                    };
+                    tema.aviso(&format!("Íntegra, mas o SHA-1 não está {onde}{dica}"))
                 }
             },
         }
     }
     if nao_confere {
         std::process::exit(SAIDA_NAO_CONFERE);
+    }
+    Ok(())
+}
+
+fn dats_cmd(acao: cli::AcaoDats) -> Resultado<()> {
+    let tema = Tema::detectar();
+    match acao {
+        cli::AcaoDats::Listar => {
+            let pasta = dats::pasta();
+            let (lista, avisos) = dats::instalados();
+            println!(
+                "{}",
+                tema.caixa_titulo(&titulo_app(), emo::APP(), LARGURA, true)
+            );
+            if let Some(p) = &pasta {
+                println!(
+                    "{}",
+                    tema.campo("Pasta", &terminal::encurtar_home(p), emo::DESTINO(), 16)
+                );
+            }
+            for a in &avisos {
+                tema.aviso(a);
+            }
+            if lista.is_empty() {
+                tema.aviso("Nenhum .dat instalado. Baixe em redump.org e use: extract-xiso-pt dats instalar <arquivo.zip>");
+            }
+            for d in &lista {
+                println!(
+                    "{}",
+                    tema.campo(
+                        &d.sistema,
+                        &format!("{} · {} imagens", d.versao, d.roms.len()),
+                        emo::DADOS(),
+                        16
+                    )
+                );
+            }
+        }
+        cli::AcaoDats::Instalar { arquivos } => {
+            for a in &arquivos {
+                for (sistema, versao, destino) in dats::instalar(a)? {
+                    tema.sucesso(&format!(
+                        "{sistema} ({versao}) instalado em {}",
+                        terminal::encurtar_home(&destino)
+                    ));
+                }
+            }
+        }
     }
     Ok(())
 }

@@ -20,6 +20,8 @@ terminal_size = "0.4.4"
 crc32fast = "1"
 md-5 = "0.11.0"
 sha1 = "0.11.0"
+# `dats instalar`: lê os .zip que o Redump entrega (deflate)
+miniz_oxide = { version = "0.8", default-features = false, features = ["with-alloc"] }
 # `crate::sistema`: espaço livre (statvfs) e Ctrl+C/SIGTERM limpos (sigaction)
 libc = "0.2"
 

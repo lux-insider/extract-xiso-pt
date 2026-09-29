@@ -87,15 +87,28 @@ extract-xiso-pt criar pasta/ -s jogo.iso
 extract-xiso-pt reescrever jogo.iso
 extract-xiso-pt reescrever jogo.iso --substituir # troca o original, só no fim
 
-# integridade e hashes; com um .dat do Redump, diz se é a imagem original
+# .dat do Redump: instale uma vez (aceita o .zip baixado do site)
+extract-xiso-pt dats instalar "Microsoft - Xbox 360 - Datfile (3691).zip"
+extract-xiso-pt dats                             # mostra os instalados
+
+# integridade e hashes; com os .dat instalados, diz se é a imagem original
 extract-xiso-pt verificar jogo.iso
-extract-xiso-pt verificar jogo.iso --dat "Microsoft - Xbox 360.dat"
+extract-xiso-pt verificar jogo.iso --dat outro.dat   # um .dat específico
+extract-xiso-pt verificar jogo.iso --sem-dat         # só a integridade
 ```
 
 `criar` e `reescrever` aceitam `-u`/`--sem-atualizacao` (deixa a
 `$SystemUpdate` de fora) e, para jogos de Xbox, `--liberar-midia`.
 
 ### Sobre o `.dat` do Redump
+
+Baixe os .dat em [redump.org/downloads](http://redump.org/downloads/)
+("Microsoft - Xbox" e "Microsoft - Xbox 360") e instale com `dats instalar`.
+Eles não vêm junto com o programa: o Redump atualiza os .dat sempre, e
+instalando você fica com a versão mais nova (a antiga do mesmo console é
+trocada). Ficam em `~/.local/share/extract-xiso-pt/dats` no Linux,
+`%APPDATA%\extract-xiso-pt\dats` no Windows, ou numa pasta `dats` ao lado do
+executável.
 
 O Redump cataloga **discos completos**. Uma imagem com o tamanho de um disco
 XGD completo pode conferir; uma XISO enxuta (de `reescrever` ou de outra
@@ -116,7 +129,7 @@ o padrão.
 |---|---|
 | 0 | tudo certo |
 | 1 | erro (imagem inválida, destino ocupado, sem espaço...) |
-| 2 | `verificar --dat`: a imagem está íntegra, mas não confere com o `.dat` |
+| 2 | `verificar`: o Redump tem este jogo com outro SHA-1 (modificado, corrompido ou outra versão); com `--dat`, também quando a imagem não está no .dat |
 | 130 | cancelado (Ctrl+C) |
 
 ### Modo máquina
@@ -137,7 +150,8 @@ src/imagem.rs     onde fica a partição, descritor de volume, leitura segura
 src/arvore.rs     árvore de arquivos, validada
 src/extrair.rs    extração atômica
 src/criar.rs      gravação de XISO (pasta ou outra imagem), --liberar-midia
-src/verificar.rs  estrutura, hashes e .dat
+src/verificar.rs  estrutura, hashes e comparação com .dat
+src/dats.rs       .dat instalados, leitura de .zip
 src/testes.rs     imagens sintéticas, entradas hostis e fuzz
 PLANO.md          o formato e as decisões de segurança
 ```

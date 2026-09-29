@@ -101,9 +101,13 @@ pub enum Comando {
     /// hashes CRC32/MD5/SHA-1, opcionalmente contra um .dat do Redump.
     Verificar {
         imagem: PathBuf,
-        /// .dat (XML Logiqx, como os do Redump) para comparar o SHA-1.
-        #[arg(long)]
+        /// .dat (ou .zip do Redump) para comparar o SHA-1. Sem ele, usa os
+        /// .dat instalados com `dats instalar`.
+        #[arg(long, conflicts_with = "sem_dat")]
         dat: Option<PathBuf>,
+        /// Não compara com nenhum .dat, nem com os instalados.
+        #[arg(long)]
+        sem_dat: bool,
         /// Imprime o relatório como um objeto JSON.
         #[arg(long, conflicts_with = "progresso_json")]
         json: bool,
@@ -111,5 +115,23 @@ pub enum Comando {
         /// relatório vem no evento final `verificado`.
         #[arg(long)]
         progresso_json: bool,
+    },
+
+    /// Os .dat do Redump usados pelo `verificar`: lista ou instala.
+    Dats {
+        #[command(subcommand)]
+        acao: Option<AcaoDats>,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum AcaoDats {
+    /// Mostra a pasta e os .dat instalados.
+    Listar,
+    /// Instala .dat ou .zip baixados do redump.org (troca a versão antiga do
+    /// mesmo console).
+    Instalar {
+        #[arg(required = true)]
+        arquivos: Vec<PathBuf>,
     },
 }

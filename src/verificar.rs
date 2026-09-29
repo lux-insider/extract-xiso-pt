@@ -53,6 +53,8 @@ pub struct ResultadoDat {
     /// Jogo encontrado (quando confere) ou o jogo esperado pelo nome.
     pub jogo: Option<String>,
     pub rom: Option<String>,
+    /// Em qual .dat estava (sistema e versão).
+    pub fonte: Option<String>,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -66,6 +68,8 @@ pub struct Relatorio {
     pub avisos: Vec<String>,
     pub hashes: Hashes,
     pub dat: Option<ResultadoDat>,
+    /// Os .dat comparados (sistema e versão).
+    pub dats_usados: Vec<String>,
 }
 
 /// Estrutura, trechos e total de bytes a ler.
@@ -304,6 +308,7 @@ pub fn comparar_dat(roms: &[Rom], h: &Hashes, nome_arquivo: &str) -> ResultadoDa
             situacao: Situacao::Confere,
             jogo: Some(r.jogo.clone()),
             rom: Some(r.nome.clone()),
+            fonte: None,
         };
     }
     if let Some(r) = roms
@@ -314,37 +319,24 @@ pub fn comparar_dat(roms: &[Rom], h: &Hashes, nome_arquivo: &str) -> ResultadoDa
             situacao: Situacao::NaoConfere,
             jogo: Some(r.jogo.clone()),
             rom: Some(r.nome.clone()),
+            fonte: None,
         };
     }
     ResultadoDat {
         situacao: Situacao::NaoEncontrada,
         jogo: None,
         rom: None,
+        fonte: None,
     }
 }
 
-/// Tudo junto: estrutura, leitura completa e .dat.
+/// Tudo junto: estrutura, leitura completa e .dat (já carregados: um .dat
+/// errado tem que falhar antes da leitura inteira, não depois).
 pub fn verificar(
     caminho: &Path,
-    dat: Option<&Path>,
+    dats: &[crate::dats::Dat],
     progresso_de: impl FnOnce(u64) -> Progresso,
 ) -> Resultado<Relatorio> {
-    // o .dat é lido primeiro: um caminho errado não deve custar a leitura inteira
-    let roms = match dat {
-        Some(d) => {
-            let bytes = fs::read(d)?;
-            let roms = ler_dat(&String::from_utf8_lossy(&bytes));
-            if roms.is_empty() {
-                return Err(Erro::Destino(format!(
-                    "{} não tem nenhuma entrada <rom>: não parece um .dat",
-                    d.display()
-                )));
-            }
-            Some(roms)
-        }
-        None => None,
-    };
-
     let mut img = Imagem::abrir(caminho)?;
     let (raiz, avisos) = estrutura(&mut img)?;
     let t = arvore::totais(&raiz);
@@ -361,7 +353,30 @@ pub fn verificar(
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let dat = roms.as_deref().map(|r| comparar_dat(r, &h, &nome));
+    let dat = (!dats.is_empty()).then(|| {
+        // o que confere, em qualquer .dat; senão, o primeiro que conhece o nome
+        let resultados: Vec<ResultadoDat> = dats
+            .iter()
+            .map(|d| comparar_dat(&d.roms, &h, &nome))
+            .collect();
+        let melhor = resultados
+            .into_iter()
+            .enumerate()
+            .min_by_key(|(_, r)| match r.situacao {
+                Situacao::Confere => 0,
+                Situacao::NaoConfere => 1,
+                Situacao::NaoEncontrada => 2,
+            });
+        let (i, mut r) = melhor.expect("há pelo menos um .dat");
+        if !matches!(r.situacao, Situacao::NaoEncontrada) {
+            r.fonte = Some(format!("{} ({})", dats[i].sistema, dats[i].versao));
+        }
+        r
+    });
+    let dats_usados = dats
+        .iter()
+        .map(|d| format!("{} ({})", d.sistema, d.versao))
+        .collect();
     Ok(Relatorio {
         layout: layout.rotulo(),
         disco_completo: tamanho_disco_completo(layout).map(|c| c == tamanho),
@@ -370,6 +385,7 @@ pub fn verificar(
         avisos,
         hashes: h,
         dat,
+        dats_usados,
     })
 }
 
