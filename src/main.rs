@@ -4,6 +4,7 @@
 //!   arvore.rs    árvore de arquivos (ponteiros da árvore binária, validada)
 //!   extrair.rs   extração com saída atômica e desfazer em caso de falha
 //!   criar.rs     gravação de XISO a partir de pasta ou de outra imagem
+//!   verificar.rs integridade: estrutura, leitura completa, hashes e .dat
 //!   progresso.rs barra no terminal ou eventos JSON (--progresso-json)
 //!   terminal.rs  cores, caixas e console do Windows (do iso2god-pt)
 //!   sistema.rs   espaço livre e Ctrl+C/SIGTERM limpos (do iso2god-pt)
@@ -19,6 +20,7 @@ mod sistema;
 mod terminal;
 #[cfg(test)]
 mod testes;
+mod verificar;
 
 use std::path::Path;
 
@@ -30,6 +32,8 @@ use imagem::Imagem;
 use terminal::{LARGURA, Tema, emo, fmt_bytes};
 
 const SAIDA_CANCELADO: i32 = 130;
+/// `verificar --dat`: a imagem está íntegra, mas não é a do .dat.
+const SAIDA_NAO_CONFERE: i32 = 2;
 
 fn main() {
     sistema::instalar_cancelamento();
@@ -90,6 +94,12 @@ fn executar(comando: Comando) -> Resultado<()> {
                 progresso_json,
             )
         }
+        Comando::Verificar {
+            imagem,
+            dat,
+            json,
+            progresso_json,
+        } => verificar_cmd(&imagem, dat.as_deref(), json, progresso_json),
         Comando::Criar {
             pasta,
             saida,
@@ -478,6 +488,121 @@ fn gravar_cmd(
     p.concluido(&saida.to_string_lossy(), &msg);
     if !json {
         Tema::detectar().sucesso(&msg);
+    }
+    Ok(())
+}
+
+fn verificar_cmd(
+    caminho: &Path,
+    dat: Option<&Path>,
+    json: bool,
+    progresso_json: bool,
+) -> Resultado<()> {
+    let tema = Tema::detectar();
+    let texto = !json && !progresso_json;
+    if texto {
+        println!(
+            "{}",
+            tema.caixa_titulo(&titulo_app(), emo::APP(), LARGURA, true)
+        );
+        println!(
+            "{}",
+            tema.campo(
+                "Imagem",
+                &terminal::encurtar_home(caminho),
+                emo::ORIGEM(),
+                16
+            )
+        );
+    }
+    progresso::Progresso::fase(progresso_json, "estrutura", "Conferindo a estrutura...");
+    let rel = verificar::verificar(caminho, dat, |total| {
+        progresso::Progresso::fase(progresso_json, "hashes", "Lendo a imagem inteira...");
+        progresso::Progresso::novo_quieto("Lendo", emo::PROGRESSO(), total, progresso_json, json)
+    })?;
+    let nao_confere = rel
+        .dat
+        .as_ref()
+        .is_some_and(|d| !matches!(d.situacao, verificar::Situacao::Confere));
+
+    if json {
+        println!("{}", serde_json::to_string(&rel).unwrap_or_default());
+    } else if progresso_json {
+        progresso::emitir_verificado(&rel);
+    } else {
+        let completo = match rel.disco_completo {
+            Some(true) => " · disco completo",
+            Some(false) => " · tamanho diferente de um disco completo",
+            None => " · enxuta (só o sistema de arquivos)",
+        };
+        println!(
+            "{}",
+            tema.campo(
+                "Layout",
+                &format!("{}{completo}", rel.layout),
+                emo::DISCO(),
+                16
+            )
+        );
+        println!(
+            "{}",
+            tema.campo(
+                "Estrutura",
+                &format!(
+                    "íntegra · {} arquivos em {} pastas",
+                    rel.arquivos, rel.diretorios
+                ),
+                emo::DADOS(),
+                16
+            )
+        );
+        for a in &rel.avisos {
+            tema.aviso(a);
+        }
+        println!(
+            "{}",
+            tema.campo(
+                "Tamanho",
+                &format!(
+                    "{} ({} bytes)",
+                    fmt_bytes(rel.hashes.tamanho),
+                    rel.hashes.tamanho
+                ),
+                emo::RESUMO(),
+                16
+            )
+        );
+        println!("{}", tema.campo("CRC32", &rel.hashes.crc32, "", 16));
+        println!("{}", tema.campo("MD5", &rel.hashes.md5, "", 16));
+        println!("{}", tema.campo("SHA-1", &rel.hashes.sha1, "", 16));
+        match &rel.dat {
+            None => {
+                tema.sucesso("Imagem íntegra: a estrutura confere e todos os bytes foram lidos.")
+            }
+            Some(d) => match d.situacao {
+                verificar::Situacao::Confere => tema.sucesso(&format!(
+                    "Confere com o .dat: {} ({})",
+                    d.jogo.as_deref().unwrap_or("?"),
+                    d.rom.as_deref().unwrap_or("?")
+                )),
+                verificar::Situacao::NaoConfere => tema.erro(&format!(
+                    "Não confere: o .dat tem {} com outro SHA-1 — a imagem foi modificada, está \
+                     corrompida ou é de outra versão",
+                    d.rom.as_deref().unwrap_or("?")
+                )),
+                verificar::Situacao::NaoEncontrada => {
+                    let dica = if rel.disco_completo.is_none() {
+                        " (o Redump cataloga discos completos; uma imagem enxuta nunca confere)"
+                    } else {
+                        ""
+                    };
+                    tema.aviso(&format!("O SHA-1 não está no .dat{dica}"))
+                }
+            },
+        }
+    }
+    if nao_confere {
+        std::process::exit(SAIDA_NAO_CONFERE);
     }
     Ok(())
 }

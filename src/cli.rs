@@ -86,4 +86,20 @@ pub enum Comando {
         #[arg(long)]
         progresso_json: bool,
     },
+
+    /// Confere a integridade: estrutura inteira, leitura de todos os bytes e
+    /// hashes CRC32/MD5/SHA-1, opcionalmente contra um .dat do Redump.
+    Verificar {
+        imagem: PathBuf,
+        /// .dat (XML Logiqx, como os do Redump) para comparar o SHA-1.
+        #[arg(long)]
+        dat: Option<PathBuf>,
+        /// Imprime o relatório como um objeto JSON.
+        #[arg(long, conflicts_with = "progresso_json")]
+        json: bool,
+        /// Relata o progresso como uma linha JSON por evento em stdout; o
+        /// relatório vem no evento final `verificado`.
+        #[arg(long)]
+        progresso_json: bool,
+    },
 }

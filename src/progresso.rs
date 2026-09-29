@@ -62,6 +62,22 @@ impl Progresso {
         }
     }
 
+    /// Como `novo`, mas sem barra nem eventos quando `quieto` (saída só com
+    /// o objeto JSON final).
+    pub fn novo_quieto(rotulo: &str, emoji: &str, total: u64, json: bool, quieto: bool) -> Self {
+        if quieto {
+            return Self {
+                json: false,
+                barra: None,
+                total,
+                feito: Cell::new(0),
+                inicio: Instant::now(),
+                ultimo: Cell::new(None),
+            };
+        }
+        Self::novo(rotulo, emoji, total, json)
+    }
+
     pub fn fase(json: bool, fase: &str, mensagem: &str) {
         if json {
             emitir(&Evento::Fase { fase, mensagem });
@@ -118,6 +134,22 @@ impl Progresso {
 
     pub fn duracao(&self) -> f64 {
         self.inicio.elapsed().as_secs_f64()
+    }
+}
+
+/// Evento final de `verificar --progresso-json`: o relatório inteiro.
+pub fn emitir_verificado<T: Serialize>(relatorio: &T) {
+    #[derive(Serialize)]
+    struct Verificado<'a, T: Serialize> {
+        evento: &'static str,
+        #[serde(flatten)]
+        relatorio: &'a T,
+    }
+    if let Ok(linha) = serde_json::to_string(&Verificado {
+        evento: "verificado",
+        relatorio,
+    }) {
+        println!("{linha}");
     }
 }
 
