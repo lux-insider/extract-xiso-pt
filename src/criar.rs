@@ -56,6 +56,9 @@ struct Item {
     filhos: Vec<Item>,
     /// Preenchido na disposição: primeiro setor (tabela ou conteúdo).
     setor: u32,
+    /// Bytes a trocar na cópia gravada (posição no arquivo, bytes novos):
+    /// só o remendo de mídia do default.xbe, quando pedido.
+    remendo: Option<(u32, [u8; 4])>,
 }
 
 // ---------------------------------------------------------------------------
@@ -122,6 +125,7 @@ fn de_pasta_rec(
                 origem: Origem::Pasta(p),
                 filhos,
                 setor: 0,
+                remendo: None,
             });
         } else if meta.is_file() {
             let tamanho = u32::try_from(meta.len()).map_err(|_| {
@@ -137,6 +141,7 @@ fn de_pasta_rec(
                 origem: Origem::Pasta(p),
                 filhos: Vec::new(),
                 setor: 0,
+                remendo: None,
             });
         } else {
             return Err(Erro::Destino(format!(
@@ -161,6 +166,7 @@ fn de_imagem(entradas: &[Entrada]) -> Vec<Item> {
             origem: Origem::Imagem { setor: e.setor },
             filhos: de_imagem(&e.filhos),
             setor: 0,
+            remendo: None,
         })
         .collect()
 }
@@ -371,12 +377,110 @@ fn dispor_arquivos(itens: &mut [Item], prox: &mut u64) -> Resultado<()> {
 pub struct Opcoes {
     pub sobrescrever: bool,
     pub sem_atualizacao: bool,
+    /// Libera o default.xbe para rodar de qualquer mídia (só na cópia gravada).
+    pub liberar_midia: bool,
 }
 
 pub struct Resumo {
     pub arquivos: u64,
     pub bytes_conteudo: u64,
     pub tamanho_imagem: u64,
+    pub midia: Option<Midia>,
+}
+
+// ---------------------------------------------------------------------------
+// Remendo de mídia do XBE (opcional)
+// ---------------------------------------------------------------------------
+//
+// O certificado do XBE diz de que mídias o jogo aceita rodar (campo "allowed
+// media types"). Um jogo de disco aceita só o DVD do Xbox; com o campo
+// liberado, o console (desbloqueado) aceita rodar o mesmo XBE do disco
+// rígido ou de outra mídia. O certificado é assinado, então só serve em
+// console desbloqueado ou emulador — e é por isso que é uma opção, nunca o
+// padrão: a imagem deixa de ser idêntica ao disco.
+
+/// Cabeçalho do XBE: assinatura, endereço base e endereço do certificado.
+const XBE_ASSINATURA: &[u8; 4] = b"XBEH";
+const XBE_BASE: usize = 0x104;
+const XBE_CERTIFICADO: usize = 0x118;
+/// No certificado: tipos de mídia permitidos.
+const CERT_MIDIA: u32 = 0x9C;
+/// Disco rígido, DVD/CD de todos os tipos e disco rígido não seguro.
+const MIDIA_LIBERADA: u32 = 0x0000_00FF | 0x4000_0000;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub struct Midia {
+    pub antes: u32,
+    pub depois: u32,
+}
+
+/// Onde fica o campo de mídia num XBE e o valor dele, lendo só o começo
+/// do arquivo.
+fn campo_midia(inicio: &[u8], tamanho: u32) -> Resultado<(u32, u32)> {
+    let u32_em = |i: usize| {
+        inicio
+            .get(i..i + 4)
+            .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
+    };
+    if inicio.get(0..4) != Some(XBE_ASSINATURA) {
+        return Err(Erro::Destino(
+            "default.xbe não começa com XBEH: não é um XBE válido".into(),
+        ));
+    }
+    let (Some(base), Some(cert)) = (u32_em(XBE_BASE), u32_em(XBE_CERTIFICADO)) else {
+        return Err(Erro::Destino("default.xbe tem o cabeçalho cortado".into()));
+    };
+    let pos = cert
+        .checked_sub(base)
+        .and_then(|c| c.checked_add(CERT_MIDIA))
+        .filter(|&p| {
+            p.checked_add(4)
+                .is_some_and(|f| f <= tamanho && (f as usize) <= inicio.len())
+        })
+        .ok_or_else(|| {
+            Erro::Destino("default.xbe: o certificado aponta para fora do cabeçalho".into())
+        })?;
+    Ok((pos, u32_em(pos as usize).unwrap()))
+}
+
+/// Prepara o remendo no default.xbe da raiz. Lê só o cabeçalho da origem.
+fn preparar_midia(fonte: &mut Fonte, itens: &mut [Item]) -> Resultado<Midia> {
+    let Some(xbe) = itens
+        .iter_mut()
+        .find(|i| !i.diretorio && i.nome.eq_ignore_ascii_case(b"default.xbe"))
+    else {
+        return Err(Erro::Destino(
+            "--liberar-midia é só para jogos de Xbox: não há default.xbe na raiz".into(),
+        ));
+    };
+    // o cabeçalho de um XBE cabe folgado em 64 KiB
+    let mut inicio = vec![0u8; (xbe.tamanho as usize).min(64 * 1024)];
+    match (&xbe.origem, fonte) {
+        (Origem::Pasta(p), _) => File::open(p)?.read_exact(&mut inicio)?,
+        (Origem::Imagem { setor }, Fonte::Imagem(img, _)) => {
+            img.leitor_em(*setor)?.read_exact(&mut inicio)?
+        }
+        (Origem::Imagem { .. }, Fonte::Pasta(_)) => {
+            unreachable!("item de imagem numa fonte de pasta")
+        }
+    }
+    let (pos, antes) = campo_midia(&inicio, xbe.tamanho)?;
+    let depois = antes | MIDIA_LIBERADA;
+    if depois != antes {
+        xbe.remendo = Some((pos, depois.to_le_bytes()));
+    }
+    Ok(Midia { antes, depois })
+}
+
+/// Aplica `remendo` ao trecho `buf`, que começa em `inicio` do arquivo.
+fn aplicar_remendo(buf: &mut [u8], inicio: u64, remendo: Option<(u32, [u8; 4])>) {
+    let Some((pos, novos)) = remendo else { return };
+    for (k, b) in novos.iter().enumerate() {
+        let alvo = pos as u64 + k as u64;
+        if alvo >= inicio && alvo < inicio + buf.len() as u64 {
+            buf[(alvo - inicio) as usize] = *b;
+        }
+    }
 }
 
 /// De onde vem o conteúdo.
@@ -386,8 +490,8 @@ pub enum Fonte<'a> {
 }
 
 /// Quanto conteúdo vai ser gravado (para a barra de progresso).
-pub fn preparar(fonte: &Fonte, opcoes: &Opcoes) -> Resultado<Preparado> {
-    let mut itens = match fonte {
+pub fn preparar(fonte: &mut Fonte, opcoes: &Opcoes) -> Resultado<Preparado> {
+    let mut itens = match &*fonte {
         Fonte::Pasta(p) => {
             if !p.is_dir() {
                 return Err(Erro::Destino(format!("{} não é uma pasta", p.display())));
@@ -399,6 +503,11 @@ pub fn preparar(fonte: &Fonte, opcoes: &Opcoes) -> Resultado<Preparado> {
     if opcoes.sem_atualizacao {
         itens.retain(|i| !(i.diretorio && i.nome.eq_ignore_ascii_case(b"$SystemUpdate")));
     }
+    let midia = if opcoes.liberar_midia {
+        Some(preparar_midia(fonte, &mut itens)?)
+    } else {
+        None
+    };
     // valida todas as tabelas antes de gravar qualquer byte
     conferir_tabelas(&itens, "")?;
     let mut arquivos = 0u64;
@@ -406,6 +515,7 @@ pub fn preparar(fonte: &Fonte, opcoes: &Opcoes) -> Resultado<Preparado> {
     contar(&itens, &mut arquivos, &mut bytes);
     Ok(Preparado {
         itens,
+        midia,
         arquivos,
         bytes,
     })
@@ -413,6 +523,7 @@ pub fn preparar(fonte: &Fonte, opcoes: &Opcoes) -> Resultado<Preparado> {
 
 pub struct Preparado {
     itens: Vec<Item>,
+    pub midia: Option<Midia>,
     pub arquivos: u64,
     pub bytes: u64,
 }
@@ -517,6 +628,7 @@ pub fn gravar(
         arquivos: prep.arquivos,
         bytes_conteudo: prep.bytes,
         tamanho_imagem,
+        midia: prep.midia,
     })
 }
 
@@ -612,6 +724,7 @@ fn gravar_arquivos(
             }
         };
         let mut restante = it.tamanho as usize;
+        let mut lido = 0u64;
         buf.resize(BLOCO.min(restante), 0);
         while restante > 0 {
             if sistema::cancelado() {
@@ -625,6 +738,8 @@ fn gravar_arquivos(
                     e.into()
                 }
             })?;
+            aplicar_remendo(&mut buf[..k], lido, it.remendo);
+            lido += k as u64;
             w.bytes(&buf[..k])?;
             restante -= k;
             progresso.avancar(k as u64, &n);
@@ -697,4 +812,20 @@ pub fn saida_padrao_reescrita(iso: &Path) -> PathBuf {
     let mut n = iso.file_stem().unwrap_or_default().to_owned();
     n.push(".xiso.iso");
     iso.with_file_name(n)
+}
+
+#[cfg(test)]
+mod testes {
+    use super::*;
+
+    #[test]
+    fn remendo_atravessando_blocos() {
+        let r = Some((6u32, [1u8, 2, 3, 4]));
+        let mut a = [0u8; 8];
+        let mut b = [0u8; 8];
+        aplicar_remendo(&mut a, 0, r);
+        aplicar_remendo(&mut b, 8, r);
+        assert_eq!(a, [0, 0, 0, 0, 0, 0, 1, 2]);
+        assert_eq!(b, [3, 4, 0, 0, 0, 0, 0, 0]);
+    }
 }

@@ -514,9 +514,10 @@ fn criar_de(pasta: &Path, saida: &Path) -> Result<criar::Resumo, Erro> {
     let o = criar::Opcoes {
         sobrescrever: false,
         sem_atualizacao: false,
+        liberar_midia: false,
     };
-    let fonte = criar::Fonte::Pasta(pasta);
-    let prep = criar::preparar(&fonte, &o)?;
+    let mut fonte = criar::Fonte::Pasta(pasta);
+    let prep = criar::preparar(&mut fonte, &o)?;
     let p = Progresso::novo("", "", prep.bytes, true);
     criar::gravar(fonte, prep, saida, &o, &p)
 }
@@ -607,11 +608,12 @@ fn criar_e_extrair_devolve_a_mesma_pasta() {
     let o = criar::Opcoes {
         sobrescrever: false,
         sem_atualizacao: false,
+        liberar_midia: false,
     };
     let mut img = Imagem::abrir(&iso).unwrap();
     let raiz = arvore::ler(&mut img).unwrap();
-    let fonte = criar::Fonte::Imagem(&mut img, raiz);
-    let prep = criar::preparar(&fonte, &o).unwrap();
+    let mut fonte = criar::Fonte::Imagem(&mut img, raiz);
+    let prep = criar::preparar(&mut fonte, &o).unwrap();
     let p = Progresso::novo("", "", prep.bytes, true);
     let iso2 = t.0.join("de_novo.iso");
     criar::gravar(fonte, prep, &iso2, &o, &p).unwrap();
@@ -697,4 +699,108 @@ fn criar_cancelado_nao_deixa_nada() {
         .map(|e| e.unwrap().file_name())
         .collect();
     assert_eq!(sobrou, ["jogo"]);
+}
+
+/// XBE mínimo: base 0x10000, certificado no byte 0x200, mídia = só DVD.
+fn xbe_falso(midia: u32) -> Vec<u8> {
+    let mut x: Vec<u8> = (0..0x3000u32).map(|i| (i * 31 + 7) as u8).collect();
+    x[0..4].copy_from_slice(b"XBEH");
+    x[0x104..0x108].copy_from_slice(&0x10000u32.to_le_bytes());
+    x[0x118..0x11C].copy_from_slice(&0x10200u32.to_le_bytes());
+    x[0x29C..0x2A0].copy_from_slice(&midia.to_le_bytes());
+    x
+}
+
+fn criar_com(pasta: &Path, saida: &Path, liberar_midia: bool) -> Result<criar::Resumo, Erro> {
+    let o = criar::Opcoes {
+        sobrescrever: false,
+        sem_atualizacao: false,
+        liberar_midia,
+    };
+    let mut fonte = criar::Fonte::Pasta(pasta);
+    let prep = criar::preparar(&mut fonte, &o)?;
+    let p = Progresso::novo("", "", prep.bytes, true);
+    criar::gravar(fonte, prep, saida, &o, &p)
+}
+
+#[test]
+fn liberar_midia_muda_so_o_campo_e_so_na_imagem() {
+    let _v = EXTRACAO.lock().unwrap_or_else(|e| e.into_inner());
+    let t = Temp::nova();
+    let j = t.0.join("jogo");
+    fs::create_dir_all(&j).unwrap();
+    let original = xbe_falso(0x0000_0002);
+    fs::write(j.join("default.xbe"), &original).unwrap();
+
+    // sem a opção: byte a byte igual
+    let iso = t.0.join("normal.iso");
+    assert!(criar_com(&j, &iso, false).unwrap().midia.is_none());
+    let d = t.0.join("normal");
+    extrair_em(&iso, &d, &opcoes()).unwrap();
+    assert_eq!(fs::read(d.join("default.xbe")).unwrap(), original);
+
+    // com a opção: só os 4 bytes do campo mudam, e a pasta de origem não
+    let iso = t.0.join("liberada.iso");
+    let m = criar_com(&j, &iso, true).unwrap().midia.unwrap();
+    assert_eq!((m.antes, m.depois), (0x2, 0x4000_00FF));
+    let d = t.0.join("liberada");
+    extrair_em(&iso, &d, &opcoes()).unwrap();
+    let novo = fs::read(d.join("default.xbe")).unwrap();
+    let diferentes: Vec<usize> = (0..novo.len())
+        .filter(|&i| novo[i] != original[i])
+        .collect();
+    assert!(diferentes.iter().all(|&i| (0x29C..0x2A0).contains(&i)) && !diferentes.is_empty());
+    assert_eq!(&novo[0x29C..0x2A0], &0x4000_00FFu32.to_le_bytes());
+    assert_eq!(fs::read(j.join("default.xbe")).unwrap(), original);
+
+    // reescrever a partir da imagem normal com a opção dá o mesmo XBE
+    let o = criar::Opcoes {
+        sobrescrever: false,
+        sem_atualizacao: false,
+        liberar_midia: true,
+    };
+    let mut img = Imagem::abrir(&t.0.join("normal.iso")).unwrap();
+    let raiz = arvore::ler(&mut img).unwrap();
+    let mut fonte = criar::Fonte::Imagem(&mut img, raiz);
+    let prep = criar::preparar(&mut fonte, &o).unwrap();
+    let p = Progresso::novo("", "", prep.bytes, true);
+    let iso2 = t.0.join("reescrita.iso");
+    criar::gravar(fonte, prep, &iso2, &o, &p).unwrap();
+    let d2 = t.0.join("reescrita");
+    extrair_em(&iso2, &d2, &opcoes()).unwrap();
+    assert_eq!(fs::read(d2.join("default.xbe")).unwrap(), novo);
+}
+
+#[test]
+fn liberar_midia_recusa_o_que_nao_e_xbe() {
+    let t = Temp::nova();
+    let j = t.0.join("x360");
+    fs::create_dir_all(&j).unwrap();
+    fs::write(j.join("default.xex"), b"XEX2").unwrap();
+    assert!(matches!(
+        criar_com(&j, &t.0.join("a.iso"), true),
+        Err(Erro::Destino(_))
+    ));
+
+    let j = t.0.join("falso");
+    fs::create_dir_all(&j).unwrap();
+    fs::write(j.join("default.xbe"), b"MZ nada a ver").unwrap();
+    assert!(matches!(
+        criar_com(&j, &t.0.join("b.iso"), true),
+        Err(Erro::Destino(_))
+    ));
+
+    // certificado apontando para fora do arquivo
+    let mut x = xbe_falso(2);
+    x[0x118..0x11C].copy_from_slice(&0xFFFF_FFF0u32.to_le_bytes());
+    let j = t.0.join("cert");
+    fs::create_dir_all(&j).unwrap();
+    fs::write(j.join("default.xbe"), &x).unwrap();
+    assert!(matches!(
+        criar_com(&j, &t.0.join("c.iso"), true),
+        Err(Erro::Destino(_))
+    ));
+    assert!(
+        !t.0.join("a.iso").exists() && !t.0.join("b.iso").exists() && !t.0.join("c.iso").exists()
+    );
 }

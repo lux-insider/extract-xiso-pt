@@ -57,6 +57,11 @@ pub enum Comando {
         /// Não inclui a pasta $SystemUpdate (atualização do console).
         #[arg(short = 'u', long)]
         sem_atualizacao: bool,
+        /// Só Xbox: libera o default.xbe para rodar de qualquer mídia (disco
+        /// rígido, DVD gravado). Muda só a cópia dentro da imagem nova; serve
+        /// em console desbloqueado ou emulador.
+        #[arg(long)]
+        liberar_midia: bool,
         /// Substitui a imagem de saída se ela já existir.
         #[arg(long)]
         sobrescrever: bool,
@@ -75,6 +80,11 @@ pub enum Comando {
         /// Não inclui a pasta $SystemUpdate (atualização do console).
         #[arg(short = 'u', long)]
         sem_atualizacao: bool,
+        /// Só Xbox: libera o default.xbe para rodar de qualquer mídia (disco
+        /// rígido, DVD gravado). Muda só a cópia dentro da imagem nova; serve
+        /// em console desbloqueado ou emulador.
+        #[arg(long)]
+        liberar_midia: bool,
         /// Substitui a imagem de saída se ela já existir.
         #[arg(long)]
         sobrescrever: bool,

@@ -105,6 +105,7 @@ fn executar(comando: Comando) -> Resultado<()> {
             saida,
             sem_atualizacao,
             sobrescrever,
+            liberar_midia,
             progresso_json,
         } => {
             let saida = saida.unwrap_or_else(|| criar::saida_padrao_pasta(&pasta));
@@ -114,6 +115,7 @@ fn executar(comando: Comando) -> Resultado<()> {
                 criar::Opcoes {
                     sobrescrever,
                     sem_atualizacao,
+                    liberar_midia,
                 },
                 progresso_json,
             )
@@ -123,6 +125,7 @@ fn executar(comando: Comando) -> Resultado<()> {
             saida,
             sem_atualizacao,
             sobrescrever,
+            liberar_midia,
             substituir,
             progresso_json,
         } => {
@@ -134,6 +137,7 @@ fn executar(comando: Comando) -> Resultado<()> {
                 criar::Opcoes {
                     sobrescrever,
                     sem_atualizacao,
+                    liberar_midia,
                 },
                 progresso_json,
             )
@@ -352,8 +356,8 @@ fn extrair_cmd(
 
 fn criar_cmd(pasta: &Path, saida: &Path, opcoes: criar::Opcoes, json: bool) -> Resultado<()> {
     progresso::Progresso::fase(json, "lendo", "Lendo a pasta...");
-    let fonte = criar::Fonte::Pasta(pasta);
-    let prep = criar::preparar(&fonte, &opcoes)?;
+    let mut fonte = criar::Fonte::Pasta(pasta);
+    let prep = criar::preparar(&mut fonte, &opcoes)?;
     let tema = Tema::detectar();
     if !json {
         println!(
@@ -420,8 +424,8 @@ fn reescrever_cmd(
         println!("{}", tema.campo("Nova", &destino, emo::DESTINO(), 16));
     }
     let antes = std::fs::metadata(caminho)?.len();
-    let fonte = criar::Fonte::Imagem(&mut img, raiz);
-    let prep = criar::preparar(&fonte, &opcoes)?;
+    let mut fonte = criar::Fonte::Imagem(&mut img, raiz);
+    let prep = criar::preparar(&mut fonte, &opcoes)?;
     // com --substituir grava ao lado e só troca depois de pronta e relida
     let alvo = if substituir {
         let mut n = caminho.as_os_str().to_owned();
@@ -477,6 +481,22 @@ fn gravar_cmd(
     let r = criar::gravar(fonte, prep, saida, opcoes, &p);
     p.terminar(r.is_ok());
     let resumo = r?;
+    if let Some(m) = resumo.midia
+        && !json
+    {
+        let t = Tema::detectar();
+        if m.antes == m.depois {
+            t.info_linha(
+                emo::JOGO(),
+                &format!(
+                    "default.xbe já aceitava qualquer mídia (0x{:08X}): nada mudou",
+                    m.antes
+                ),
+            );
+        } else {
+            t.info_linha(emo::JOGO(), &format!("default.xbe liberado para qualquer mídia: 0x{:08X} → 0x{:08X} (só na imagem nova)", m.antes, m.depois));
+        }
+    }
     let msg = format!(
         "Concluído em {:.1}s: {} arquivos ({}) numa imagem de {} em {}",
         p.duracao(),
