@@ -46,7 +46,8 @@ preenchido com 0xFF). O nó raiz da árvore está no deslocamento 0 da tabela.
 | … | | preenchimento até múltiplo de 4, com 0xFF |
 
 A árvore é ordenada pelo nome, sem diferenciar maiúsculas. Um diretório vazio
-tem tabela de tamanho 0.
+tem tabela de tamanho 0 ou um setor inteiro de 0xFF (sem nó na posição 0) —
+o `extract-xiso` grava assim, e o `criar` também.
 
 ## Decisões de segurança (valem para todo comando)
 
@@ -69,6 +70,8 @@ tem tabela de tamanho 0.
    explícita.
 
 ## Etapas
+
+Etapas 1 a 4 prontas; falta a 5.
 
 1. Leitura: detectar layout, ler o descritor, percorrer a árvore — `info`,
    `listar` (texto e `--json`).
