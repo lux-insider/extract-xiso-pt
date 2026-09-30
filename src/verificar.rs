@@ -19,12 +19,15 @@ use crate::sistema;
 const BLOCO: usize = 4 * 1024 * 1024;
 
 /// Tamanho do arquivo de um disco completo (como o Redump cataloga).
-fn tamanho_disco_completo(layout: Layout) -> Option<u64> {
+/// Tamanhos de arquivo de um disco completo de cada layout, como o Redump
+/// cataloga (contados nos .dat de Xbox e Xbox 360: o XGD2, por exemplo,
+/// aparece com três tamanhos, conforme a versão do disco).
+fn tamanhos_disco_completo(layout: Layout) -> &'static [u64] {
     match layout {
-        Layout::Xiso => None,
-        Layout::Xgd1 => Some(7_825_162_240),
-        Layout::Xgd2 => Some(7_835_492_352),
-        Layout::Xgd3 => Some(8_738_846_720),
+        Layout::Xiso => &[],
+        Layout::Xgd1 => &[7_825_162_240],
+        Layout::Xgd2 => &[7_834_892_288, 7_835_492_352, 7_838_695_424],
+        Layout::Xgd3 => &[8_738_846_720, 8_738_854_912],
     }
 }
 
@@ -388,7 +391,13 @@ pub fn verificar(
         .collect();
     Ok(Relatorio {
         layout: layout.rotulo(),
-        disco_completo: tamanho_disco_completo(layout).map(|c| c == tamanho),
+        // idêntico ao Redump é disco completo por definição
+        disco_completo: (layout != Layout::Xiso).then(|| {
+            tamanhos_disco_completo(layout).contains(&tamanho)
+                || dat
+                    .as_ref()
+                    .is_some_and(|d| matches!(d.situacao, Situacao::Confere))
+        }),
         arquivos: t.arquivos,
         diretorios: t.diretorios,
         avisos,
@@ -454,5 +463,19 @@ mod testes {
             comparar_dat(&roms, &outro, "nada.iso").situacao,
             Situacao::NaoEncontrada
         ));
+    }
+}
+
+#[cfg(test)]
+mod testes_tamanhos {
+    use super::*;
+
+    #[test]
+    fn tamanhos_de_disco_completo_do_redump() {
+        // RE5 (XGD2), NFS Most Wanted (XGD2, outra versão de disco), RE6 (XGD3)
+        assert!(tamanhos_disco_completo(Layout::Xgd2).contains(&7_835_492_352));
+        assert!(tamanhos_disco_completo(Layout::Xgd2).contains(&7_834_892_288));
+        assert!(tamanhos_disco_completo(Layout::Xgd3).contains(&8_738_846_720));
+        assert!(tamanhos_disco_completo(Layout::Xiso).is_empty());
     }
 }
