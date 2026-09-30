@@ -1,6 +1,6 @@
 [package]
 name = "extract-xiso-pt"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 description = "Lista, extrai, cria, otimiza e verifica imagens de disco de Xbox e Xbox 360 (XDVDFS), em português"
 license = "MIT"
