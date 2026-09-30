@@ -574,6 +574,7 @@ fn verificar_cmd(
         // com os instalados, uma imagem que não é do Redump (enxuta,
         // traduzida, caseira) é normal; com --dat pedido, não confere
         verificar::Situacao::NaoEncontrada => explicito,
+        verificar::Situacao::Enxuta => false,
     });
 
     if json {
@@ -644,6 +645,11 @@ fn verificar_cmd(
                     "Não confere: o .dat tem {} com outro SHA-1 — a imagem foi modificada, está \
                      corrompida ou é de outra versão",
                     d.rom.as_deref().unwrap_or("?")
+                )),
+                verificar::Situacao::Enxuta => tema.aviso(&format!(
+                    "Íntegra. É uma cópia enxuta de {} (sem a partição de vídeo): o Redump guarda \
+                     o hash do disco completo, então o SHA-1 não tem como conferir",
+                    d.jogo.as_deref().unwrap_or("?")
                 )),
                 verificar::Situacao::NaoEncontrada => {
                     let dica = if rel.disco_completo.is_none() {

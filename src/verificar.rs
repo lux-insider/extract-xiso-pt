@@ -45,6 +45,10 @@ pub enum Situacao {
     NaoConfere,
     /// Nenhuma entrada com este hash nem com este nome.
     NaoEncontrada,
+    /// Imagem enxuta (XISO) com o nome de um jogo do .dat: o Redump guarda o
+    /// hash do disco completo, então o SHA-1 nunca poderia conferir — não é
+    /// sinal de problema.
+    Enxuta,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -365,11 +369,16 @@ pub fn verificar(
             .min_by_key(|(_, r)| match r.situacao {
                 Situacao::Confere => 0,
                 Situacao::NaoConfere => 1,
-                Situacao::NaoEncontrada => 2,
+                Situacao::NaoEncontrada | Situacao::Enxuta => 2,
             });
         let (i, mut r) = melhor.expect("há pelo menos um .dat");
         if !matches!(r.situacao, Situacao::NaoEncontrada) {
             r.fonte = Some(format!("{} ({})", dats[i].sistema, dats[i].versao));
+        }
+        // uma XISO não tem os bytes do disco: pelo nome, só dá para dizer de
+        // que jogo ela é uma cópia enxuta
+        if matches!(r.situacao, Situacao::NaoConfere) && layout == Layout::Xiso {
+            r.situacao = Situacao::Enxuta;
         }
         r
     });
