@@ -605,6 +605,17 @@ pub fn gravar(
     }
 
     let parcial = temporario::caminho_de(saida);
+    // reescrever a.iso.extract-xiso-pt.parcial -s a.iso: o temporário seria
+    // a própria origem, apagada antes de ser lida
+    if let Fonte::Imagem(img, _) = &fonte
+        && temporario::mesmo_arquivo(&parcial, img.caminho())
+    {
+        return Err(Erro::Destino(format!(
+            "o arquivo temporário {} seria a própria imagem de origem; escolha outro nome \
+             para a saída",
+            parcial.display()
+        )));
+    }
     let r = gravar_em(
         &mut fonte,
         &prep.itens,

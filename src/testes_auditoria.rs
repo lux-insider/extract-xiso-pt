@@ -243,3 +243,30 @@ fn p6_extracao_segue_a_ordem_dos_setores() {
     assert_eq!(fs::read(d.join("a")).unwrap(), b"velho");
     assert_eq!(fs::read(d.join("b")).unwrap(), b"velho");
 }
+
+/// S-8: `reescrever` cujo temporário seria a própria imagem de origem é
+/// recusado antes de tocar nela.
+#[test]
+fn s8_temporario_igual_a_origem_e_recusado() {
+    let _v = EXTRACAO.lock().unwrap_or_else(|e| e.into_inner());
+    let t = Temp::nova();
+    let iso = imagem_valida().gravar(&t.0);
+    let origem = t.0.join("a.iso.extract-xiso-pt.parcial");
+    fs::rename(&iso, &origem).unwrap();
+    let antes = fs::read(&origem).unwrap();
+
+    let o = crate::criar::Opcoes {
+        sobrescrever: false,
+        sem_atualizacao: false,
+        liberar_midia: false,
+    };
+    let mut img = crate::imagem::Imagem::abrir(&origem).unwrap();
+    let raiz = crate::arvore::ler(&mut img).unwrap();
+    let mut fonte = crate::criar::Fonte::Imagem(&mut img, raiz);
+    let prep = crate::criar::preparar(&mut fonte, &o).unwrap();
+    let p = crate::progresso::Progresso::novo("", "", prep.bytes, true);
+    let r = crate::criar::gravar(fonte, prep, &t.0.join("a.iso"), &o, &p);
+    assert!(matches!(r, Err(Erro::Destino(_))), "{:?}", r.err());
+    assert_eq!(fs::read(&origem).unwrap(), antes);
+    assert!(!t.0.join("a.iso").exists());
+}
