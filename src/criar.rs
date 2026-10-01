@@ -79,6 +79,9 @@ fn de_pasta_rec(
     ancestrais: &mut HashSet<PathBuf>,
     contagem: &mut usize,
 ) -> Resultado<Vec<Item>> {
+    if sistema::cancelado() {
+        return Err(Erro::Cancelado);
+    }
     if profundidade > PROFUNDIDADE_MAXIMA {
         return Err(Erro::Destino(format!(
             "{caminho}: mais de {PROFUNDIDADE_MAXIMA} níveis de pastas"
