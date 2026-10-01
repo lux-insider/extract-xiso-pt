@@ -159,20 +159,87 @@ fn s6_falha_com_sobrescrever_nao_apaga_arquivo_substituido() {
     let t = Temp::nova();
     let iso = imagem_valida().gravar(&t.0);
     let d = t.0.join("destino");
-    fs::create_dir(&d).unwrap();
+    fs::create_dir_all(d.join("pasta")).unwrap();
     fs::write(d.join("a.bin"), b"versao antiga").unwrap();
-    // "pasta" é um diretório na imagem; um arquivo com esse nome no destino
-    // faz a extração falhar depois de a.bin
-    fs::write(d.join("pasta"), b"do usuario").unwrap();
+    // uma pasta no lugar do temporário de pasta/dentro.txt faz a extração
+    // falhar nele, depois de a.bin (na ordem da árvore e na do disco)
+    let bloqueio = d.join("pasta/dentro.txt.extract-xiso-pt.parcial");
+    fs::create_dir(&bloqueio).unwrap();
 
     let r = extrair_em(&iso, &d, &sobrescrever());
     assert!(r.is_err());
     assert_eq!(fs::read(d.join("a.bin")).unwrap(), vec![0xAB; 3000]);
-    assert_eq!(fs::read(d.join("pasta")).unwrap(), b"do usuario");
+    assert!(bloqueio.is_dir());
+    assert!(!d.join("pasta/dentro.txt").exists());
     let mut sobrou: Vec<_> = fs::read_dir(&d)
         .unwrap()
         .map(|e| e.unwrap().file_name())
         .collect();
     sobrou.sort();
     assert_eq!(sobrou, ["a.bin", "pasta"]);
+}
+
+/// P-6 e S-7: os arquivos são extraídos na ordem do disco; um arquivo da
+/// imagem chamado `x.extract-xiso-pt.parcial`, extraído antes de `x`, não
+/// é atropelado pelo temporário de `x`.
+#[test]
+fn p6_s7_ordem_do_disco_e_temporario_que_colide_com_arquivo() {
+    let _v = EXTRACAO.lock().unwrap_or_else(|e| e.into_inner());
+    let t = Temp::nova();
+    // O .parcial vem antes de x no disco (então é extraído antes na ordem
+    // do disco) e também na tabela, fora da ordem alfabética (então também
+    // seria na ordem da árvore, a da versão 0.2.2).
+    let tab = crate::testes::tabela(&[
+        (b"x.extract-xiso-pt.parcial", 35, 6, 0x20),
+        (b"x", 36, 5, 0x20),
+        (b"y", 37, 2, 0x20),
+    ]);
+    let mut c = crate::testes::Construtor::novo(38);
+    c.raiz(33, tab.len() as u32)
+        .por(33, &tab)
+        .por(35, b"sou eu")
+        .por(36, b"xxxxx")
+        .por(37, b"yy");
+    let iso = c.gravar(&t.0);
+    let d = t.0.join("saida");
+    extrair_em(&iso, &d, &opcoes()).unwrap();
+    assert_eq!(fs::read(d.join("x")).unwrap(), b"xxxxx");
+    assert_eq!(
+        fs::read(d.join("x.extract-xiso-pt.parcial")).unwrap(),
+        b"sou eu"
+    );
+    assert_eq!(fs::read(d.join("y")).unwrap(), b"yy");
+    assert_eq!(fs::read_dir(&d).unwrap().count(), 3);
+}
+
+/// P-6: a ordem é a do disco, não a da árvore. Na árvore: a, b, c; no
+/// disco: c, a, b. Com o temporário de `a` bloqueado, a extração falha em
+/// `a`; com --sobrescrever, o que já foi extraído fica (S-6): só `c`, que
+/// vem antes de `a` no disco.
+#[test]
+fn p6_extracao_segue_a_ordem_dos_setores() {
+    let _v = EXTRACAO.lock().unwrap_or_else(|e| e.into_inner());
+    let t = Temp::nova();
+    let tab = crate::testes::tabela(&[
+        (b"a", 36, 3, 0x20),
+        (b"b", 37, 3, 0x20),
+        (b"c", 35, 3, 0x20),
+    ]);
+    let mut c = crate::testes::Construtor::novo(38);
+    c.raiz(33, tab.len() as u32)
+        .por(33, &tab)
+        .por(35, b"CCC")
+        .por(36, b"AAA")
+        .por(37, b"BBB");
+    let iso = c.gravar(&t.0);
+    let d = t.0.join("saida");
+    fs::create_dir(&d).unwrap();
+    for n in ["a", "b", "c"] {
+        fs::write(d.join(n), b"velho").unwrap();
+    }
+    fs::create_dir(d.join("a.extract-xiso-pt.parcial")).unwrap();
+    assert!(extrair_em(&iso, &d, &sobrescrever()).is_err());
+    assert_eq!(fs::read(d.join("c")).unwrap(), b"CCC");
+    assert_eq!(fs::read(d.join("a")).unwrap(), b"velho");
+    assert_eq!(fs::read(d.join("b")).unwrap(), b"velho");
 }
