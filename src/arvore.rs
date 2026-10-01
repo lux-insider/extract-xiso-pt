@@ -8,6 +8,7 @@ use std::collections::HashSet;
 
 use crate::erro::{Erro, Resultado, imagem};
 use crate::imagem::{Imagem, SETOR};
+use crate::sistema;
 
 pub const ATTR_DIRETORIO: u8 = 0x10;
 /// Mais que isto é imagem corrompida (um jogo real tem poucos níveis).
@@ -114,6 +115,11 @@ impl Leitor {
         caminho: &str,
         profundidade: usize,
     ) -> Resultado<Vec<Entrada>> {
+        // uma imagem com milhares de tabelas (ou corrompida de propósito)
+        // pode levar tempo: Ctrl+C e SIGTERM valem aqui também
+        if sistema::cancelado() {
+            return Err(Erro::Cancelado);
+        }
         let onde = if caminho.is_empty() {
             "a raiz".to_string()
         } else {

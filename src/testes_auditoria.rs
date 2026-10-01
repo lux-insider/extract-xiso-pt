@@ -122,3 +122,30 @@ fn b3_tabelas_compartilhadas_nao_travam_a_leitura() {
     let raiz = crate::testes::ler(&iso).unwrap();
     assert_eq!(crate::arvore::totais(&raiz).diretorios, 2 + 4 + 8);
 }
+
+/// B-4: Ctrl+C/SIGTERM valem também durante a leitura da árvore da imagem
+/// e da pasta de origem do `criar`.
+#[test]
+fn b4_cancelamento_durante_a_leitura() {
+    let _v = EXTRACAO.lock().unwrap_or_else(|e| e.into_inner());
+    let t = Temp::nova();
+    let iso = imagem_valida().gravar(&t.0);
+    let j = t.0.join("jogo");
+    fs::create_dir(&j).unwrap();
+    fs::write(j.join("default.xex"), b"XEX2").unwrap();
+
+    crate::sistema::marcar_cancelamento();
+    let arvore = crate::testes::ler(&iso);
+    let o = crate::criar::Opcoes {
+        sobrescrever: false,
+        sem_atualizacao: false,
+        liberar_midia: false,
+    };
+    let pasta = crate::criar::preparar(&mut crate::criar::Fonte::Pasta(&j), &o);
+    crate::sistema::limpar_cancelamento();
+    assert!(matches!(arvore, Err(Erro::Cancelado)), "{arvore:?}");
+    assert!(matches!(pasta, Err(Erro::Cancelado)));
+    // sem o pedido, as duas leituras funcionam
+    assert!(crate::testes::ler(&iso).is_ok());
+    assert!(crate::criar::preparar(&mut crate::criar::Fonte::Pasta(&j), &o).is_ok());
+}
