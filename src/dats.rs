@@ -240,6 +240,10 @@ mod zip {
         let entradas = u16_em(b, eocd + 10).ok_or_else(|| ruim("fim"))? as usize;
         let mut p = u32_em(b, eocd + 16).ok_or_else(|| ruim("fim"))? as usize;
         let mut saida = Vec::new();
+        // Todas as entradas ficam juntas na memória, e nada impede o
+        // diretório central de repetir a mesma entrada milhares de vezes:
+        // o limite vale para a soma, conferida antes de descomprimir.
+        let mut total = 0usize;
         for _ in 0..entradas {
             if u32_em(b, p) != Some(0x0201_4b50) {
                 return Err(ruim("entrada do diretório"));
@@ -262,8 +266,9 @@ mod zip {
             if flags & 1 != 0 {
                 return Err(ruim("arquivo com senha"));
             }
-            if tam > super::MAX_DAT || comp == u32::MAX as usize {
-                return Err(ruim("entrada grande demais"));
+            total = total.saturating_add(tam);
+            if total > super::MAX_DAT || comp == u32::MAX as usize {
+                return Err(ruim("conteúdo grande demais para um .dat"));
             }
             if u32_em(b, local) != Some(0x0403_4b50) {
                 return Err(ruim("cabeçalho local"));
@@ -423,5 +428,39 @@ mod testes {
         assert!(!sobrou_disfarcado, "a versão antiga deveria ter saído");
         assert_eq!(dats.len(), 1);
         assert_eq!(dats[0].versao, "2026-07-01");
+    }
+
+    /// .zip cujo diretório central repete `vezes` a mesma entrada.
+    fn zip_repetido(conteudo: &[u8], vezes: u16) -> Vec<u8> {
+        let um = zip_com("x.dat", conteudo);
+        // diretório central do zip de uma entrada: do fim dos dados ao EOCD
+        let cd = u32::from_le_bytes(um[um.len() - 6..um.len() - 2].try_into().unwrap()) as usize;
+        let entrada = um[cd..um.len() - 22].to_vec();
+        let mut z = um[..cd].to_vec();
+        for _ in 0..vezes {
+            z.extend(&entrada);
+        }
+        let tam_cd = (z.len() - cd) as u32;
+        z.extend(0x0605_4b50u32.to_le_bytes());
+        z.extend([0, 0, 0, 0]);
+        z.extend(vezes.to_le_bytes());
+        z.extend(vezes.to_le_bytes());
+        z.extend(tam_cd.to_le_bytes());
+        z.extend((cd as u32).to_le_bytes());
+        z.extend(0u16.to_le_bytes());
+        z
+    }
+
+    /// B-1: um .zip pequeno que declara muito mais que `MAX_DAT` no total
+    /// (a mesma entrada repetida) é recusado antes de descomprimir.
+    #[test]
+    fn b1_zip_com_entrada_repetida_e_recusado() {
+        let mb = vec![b' '; 1024 * 1024];
+        assert_eq!(zip::ler(&zip_repetido(&mb, 3)).unwrap().len(), 3);
+        let bomba = zip_repetido(&mb, 65_535); // 64 GiB declarados
+        assert!(bomba.len() < 4 * 1024 * 1024);
+        let inicio = std::time::Instant::now();
+        assert!(zip::ler(&bomba).is_err());
+        assert!(inicio.elapsed().as_secs() < 5);
     }
 }
