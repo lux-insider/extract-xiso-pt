@@ -190,9 +190,16 @@ fn extrair_arquivo(
     }
     drop(saida);
 
+    // Com --sobrescrever, o rename pode trocar um arquivo que já existia.
+    // O arquivo novo está completo; se ele entrasse na lista do desfazer,
+    // uma falha mais adiante deixaria o usuário sem a versão antiga (já
+    // trocada) e sem a nova.
+    let substitui = fs::symlink_metadata(alvo).is_ok();
     erro::renomear(&parcial, alvo)?;
-    // o que existe agora é o arquivo pronto, não o parcial
-    if let Some(p) = criados.caminhos.last_mut() {
+    if substitui {
+        criados.caminhos.pop();
+    } else if let Some(p) = criados.caminhos.last_mut() {
+        // o que existe agora é o arquivo pronto, não o parcial
         *p = alvo.to_path_buf();
     }
     Ok(())

@@ -149,3 +149,30 @@ fn b4_cancelamento_durante_a_leitura() {
     assert!(crate::testes::ler(&iso).is_ok());
     assert!(crate::criar::preparar(&mut crate::criar::Fonte::Pasta(&j), &o).is_ok());
 }
+
+/// S-6: com --sobrescrever, uma falha no meio não apaga o arquivo que
+/// substituiu um do usuário (a versão antiga já foi trocada; apagar a nova
+/// deixaria o usuário sem nenhuma das duas).
+#[test]
+fn s6_falha_com_sobrescrever_nao_apaga_arquivo_substituido() {
+    let _v = EXTRACAO.lock().unwrap_or_else(|e| e.into_inner());
+    let t = Temp::nova();
+    let iso = imagem_valida().gravar(&t.0);
+    let d = t.0.join("destino");
+    fs::create_dir(&d).unwrap();
+    fs::write(d.join("a.bin"), b"versao antiga").unwrap();
+    // "pasta" é um diretório na imagem; um arquivo com esse nome no destino
+    // faz a extração falhar depois de a.bin
+    fs::write(d.join("pasta"), b"do usuario").unwrap();
+
+    let r = extrair_em(&iso, &d, &sobrescrever());
+    assert!(r.is_err());
+    assert_eq!(fs::read(d.join("a.bin")).unwrap(), vec![0xAB; 3000]);
+    assert_eq!(fs::read(d.join("pasta")).unwrap(), b"do usuario");
+    let mut sobrou: Vec<_> = fs::read_dir(&d)
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    sobrou.sort();
+    assert_eq!(sobrou, ["a.bin", "pasta"]);
+}
