@@ -142,6 +142,7 @@ fn setores(bytes: u32) -> u64 {
 /// numa thread: a leitura acontece uma vez só e o tempo total fica sendo o
 /// do hash mais lento, não a soma dos três.
 pub fn hashes(caminho: &Path, progresso: &Progresso) -> Resultado<Hashes> {
+    use std::collections::VecDeque;
     use std::sync::Arc;
     use std::sync::mpsc::{Receiver, sync_channel};
 
@@ -173,12 +174,29 @@ pub fn hashes(caminho: &Path, progresso: &Progresso) -> Resultado<Hashes> {
         let sha = escopo.spawn(move || consumir(rx_sha, Sha1::new(), |h, b| h.update(b)));
 
         let mut lido = 0u64;
+        // Blocos já enviados, do mais antigo ao mais novo. Quando as três
+        // threads terminam um bloco, só sobra a referência daqui, e ele é
+        // reaproveitado em vez de alocar e zerar 4 MB de novo (umas 2000
+        // vezes numa imagem de 8 GB). As filas curtas limitam quantos
+        // blocos circulam ao mesmo tempo.
+        let mut circulando: VecDeque<Arc<Vec<u8>>> = VecDeque::new();
         let leitura: Resultado<()> = (|| {
             loop {
                 if sistema::cancelado() {
                     return Err(Erro::Cancelado);
                 }
-                let mut buf = vec![0u8; BLOCO];
+                let livre = circulando
+                    .front()
+                    .is_some_and(|b| Arc::strong_count(b) == 1);
+                let mut buf = if livre {
+                    circulando
+                        .pop_front()
+                        .and_then(|b| Arc::try_unwrap(b).ok())
+                        .unwrap_or_default()
+                } else {
+                    Vec::new()
+                };
+                buf.resize(BLOCO, 0);
                 let mut n = 0;
                 // enche o bloco (read pode devolver menos que o pedido)
                 while n < BLOCO {
@@ -197,6 +215,7 @@ pub fn hashes(caminho: &Path, progresso: &Progresso) -> Resultado<Hashes> {
                     // só falha se a thread morreu, o que o join abaixo relata
                     let _ = tx.send(Arc::clone(&bloco));
                 }
+                circulando.push_back(bloco);
                 lido += n as u64;
                 progresso.avancar(n as u64, "");
             }
@@ -463,6 +482,24 @@ mod testes {
             &Progresso::novo_quieto("", "", 0, false, true),
         );
         assert!(matches!(r, Err(Erro::Imagem(_))), "{r:?}");
+    }
+
+    /// P-2: com os blocos reaproveitados, os hashes de um arquivo de vários
+    /// blocos (e um pedaço) continuam os mesmos de calcular tudo de uma vez.
+    #[test]
+    fn p2_hashes_com_blocos_reaproveitados() {
+        let dados: Vec<u8> = (0..(9 * BLOCO + 77) as u64)
+            .map(|i| (i.wrapping_mul(2_654_435_761) >> 13) as u8)
+            .collect();
+        let p = std::env::temp_dir().join(format!("extract-xiso-pt-p2-{}", std::process::id()));
+        fs::write(&p, &dados).unwrap();
+        let h = hashes(&p, &Progresso::novo_quieto("", "", 0, false, true));
+        fs::remove_file(&p).ok();
+        let h = h.unwrap();
+        assert_eq!(h.tamanho, dados.len() as u64);
+        assert_eq!(h.crc32, format!("{:08x}", crc32fast::hash(&dados)));
+        assert_eq!(h.md5, hex(&Md5::digest(&dados)));
+        assert_eq!(h.sha1, hex(&Sha1::digest(&dados)));
     }
 
     #[test]
