@@ -320,3 +320,135 @@ fn s9_falha_apaga_tambem_as_pastas_pai_criadas() {
     extrair_em(&iso, &d, &opcoes()).unwrap();
     assert!(d.join("a.bin").is_file());
 }
+
+// ---------------------------------------------------------------------------
+// A-6: o reescrever grava os nomes com os mesmos bytes da origem
+// ---------------------------------------------------------------------------
+
+/// Os bytes de todos os nomes de uma imagem XISO, lidos direto das tabelas
+/// (sem passar pelo leitor do programa), como caminhos separados por `/`,
+/// na ordem da árvore.
+fn nomes_brutos(iso: &std::path::Path) -> Vec<Vec<u8>> {
+    const S: usize = 2048;
+    let b = fs::read(iso).unwrap();
+    let u32_em = |i: usize| u32::from_le_bytes(b[i..i + 4].try_into().unwrap()) as usize;
+    let mut nomes = Vec::new();
+    // (início da tabela, tamanho, prefixo do caminho)
+    let mut tabelas = vec![(u32_em(32 * S + 20) * S, u32_em(32 * S + 24), Vec::new())];
+    while let Some((ini, tam, prefixo)) = tabelas.pop() {
+        let t = &b[ini..ini + tam];
+        if tam == 0 || t[..4] == [0xFF; 4] {
+            continue; // diretório vazio
+        }
+        // em ordem: esquerda, nó, direita (pilha de posição e "já desceu")
+        let mut pilha = vec![(0usize, false)];
+        while let Some((p, desceu)) = pilha.pop() {
+            let esq = u16::from_le_bytes([t[p], t[p + 1]]) as usize * 4;
+            let dir = u16::from_le_bytes([t[p + 2], t[p + 3]]) as usize * 4;
+            if !desceu {
+                pilha.push((p, true));
+                if esq != 0 {
+                    pilha.push((esq, false));
+                }
+                continue;
+            }
+            let n = t[p + 13] as usize;
+            let mut caminho = prefixo.clone();
+            if !caminho.is_empty() {
+                caminho.push(b'/');
+            }
+            caminho.extend_from_slice(&t[p + 14..p + 14 + n]);
+            if t[p + 12] & crate::arvore::ATTR_DIRETORIO != 0 {
+                let setor = u32::from_le_bytes(t[p + 4..p + 8].try_into().unwrap()) as usize;
+                let tamanho = u32::from_le_bytes(t[p + 8..p + 12].try_into().unwrap()) as usize;
+                tabelas.push((setor * S, tamanho, caminho.clone()));
+            }
+            nomes.push(caminho);
+            if dir != 0 {
+                pilha.push((dir, false));
+            }
+        }
+    }
+    nomes.sort();
+    nomes
+}
+
+/// Imagem de origem com uma pasta e um arquivo dentro dela, todos com os
+/// nomes nos bytes pedidos, e a reescrita dela: devolve os nomes brutos de
+/// cada uma.
+fn reescrever_nomes(pasta: &[u8], arquivo: &[u8], raiz: &[u8]) -> (Vec<Vec<u8>>, Vec<Vec<u8>>) {
+    let t = Temp::nova();
+    let sub = crate::testes::tabela(&[(arquivo, 38, 3, 0x20)]);
+    let tab = crate::testes::tabela(&[
+        (raiz, 37, 4, 0x20),
+        (b"default.xex", 36, 4, 0x20),
+        (pasta, 34, sub.len() as u32, crate::arvore::ATTR_DIRETORIO),
+    ]);
+    let mut c = crate::testes::Construtor::novo(39);
+    c.raiz(33, tab.len() as u32)
+        .por(33, &tab)
+        .por(34, &sub)
+        .por(36, b"XEX2")
+        .por(37, b"raiz")
+        .por(38, b"sub");
+    let origem = c.gravar(&t.0);
+    let saida = t.0.join("reescrita.iso");
+    crate::testes_saida::reescrever(&origem, &saida, false, false);
+    (nomes_brutos(&origem), nomes_brutos(&saida))
+}
+
+/// A-6 (a): um nome UTF-8 com acento sai do reescrever com os mesmos bytes
+/// do criar; a imagem reescrita de uma imagem criada é a mesma, byte a byte
+/// (fora a data de criação).
+#[test]
+fn a6_nome_utf8_com_acento_sai_do_reescrever_como_no_criar() {
+    let _v = EXTRACAO.lock().unwrap_or_else(|e| e.into_inner());
+    let t = Temp::nova();
+    let j = t.0.join("jogo");
+    fs::create_dir_all(j.join("Canção")).unwrap();
+    fs::write(j.join("default.xex"), b"XEX2").unwrap();
+    fs::write(j.join("Ação.wav"), b"RIFF").unwrap();
+    fs::write(j.join("Canção/coração.ogg"), b"OggS").unwrap();
+    let criada = t.0.join("criada.iso");
+    crate::testes::criar_de(&j, &criada).unwrap();
+    let reescrita = t.0.join("reescrita.iso");
+    crate::testes_saida::reescrever(&criada, &reescrita, false, false);
+
+    let nomes = nomes_brutos(&reescrita);
+    assert!(
+        nomes.contains(&"Ação.wav".as_bytes().to_vec()),
+        "{nomes:x?}"
+    );
+    assert!(nomes.contains(&"Canção/coração.ogg".as_bytes().to_vec()));
+    assert_eq!(nomes, nomes_brutos(&criada));
+    assert_eq!(
+        crate::testes_saida::hash_imagem(&reescrita),
+        crate::testes_saida::hash_imagem(&criada)
+    );
+}
+
+/// A-6 (b): um nome Latin-1 sai do reescrever com os mesmos bytes Latin-1.
+#[test]
+fn a6_nome_latin1_sai_do_reescrever_com_os_mesmos_bytes() {
+    let _v = EXTRACAO.lock().unwrap_or_else(|e| e.into_inner());
+    // "Ação", "Canção" e "Aé.bin" em Latin-1: não são UTF-8 válido
+    let (origem, reescrita) = reescrever_nomes(
+        &[b'C', b'a', b'n', 0xE7, 0xE3, b'o'],
+        &[b'A', 0xE7, 0xE3, b'o', b'.', b'x'],
+        &[b'A', 0xE9, b'.', b'b', b'i', b'n'],
+    );
+    assert_eq!(reescrita, origem);
+}
+
+/// A-6 (c): um nome Latin-1 cujos bytes por acaso formam UTF-8 válido
+/// ("CÃ©" em Latin-1 são os bytes de "Cé" em UTF-8) também volta igual.
+#[test]
+fn a6_nome_latin1_que_parece_utf8_volta_igual() {
+    let _v = EXTRACAO.lock().unwrap_or_else(|e| e.into_inner());
+    let (origem, reescrita) = reescrever_nomes(
+        &[b'D', 0xC3, 0xA9],
+        &[b'F', 0xC3, 0xA9, b'.', b'x'],
+        &[b'C', 0xC3, 0xA9, b'.', b'b', b'i', b'n'],
+    );
+    assert_eq!(reescrita, origem);
+}

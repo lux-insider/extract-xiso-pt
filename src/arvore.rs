@@ -30,8 +30,15 @@ const MAX_LIDO_TABELAS: u64 = 1024 * 1024 * 1024;
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Entrada {
-    /// Nome como está no disco (UTF-8 se válido, senão Latin-1).
+    /// Nome como texto, para mostrar e para extrair (UTF-8 se válido, senão
+    /// Latin-1).
     pub nome: String,
+    /// Os bytes do nome exatamente como estão no disco. O texto acima não
+    /// basta para voltar a eles (os mesmos bytes podem ser UTF-8 válido e
+    /// ter sido gravados como Latin-1), e o console acha o arquivo pelos
+    /// bytes: é isto que o `reescrever` grava. Fora do JSON do `listar`.
+    #[serde(skip)]
+    pub nome_bytes: Vec<u8>,
     pub setor: u32,
     pub tamanho: u32,
     pub atributos: u8,
@@ -197,6 +204,7 @@ impl Leitor {
             }
             let mut e = Entrada {
                 nome: no.nome,
+                nome_bytes: no.nome_bytes,
                 setor: no.setor,
                 tamanho: no.tamanho,
                 atributos: no.atributos,
@@ -217,6 +225,7 @@ impl Leitor {
 
 struct No {
     nome: String,
+    nome_bytes: Vec<u8>,
     setor: u32,
     tamanho: u32,
     atributos: u8,
@@ -295,6 +304,7 @@ fn ler_no(tabela: &[u8], pos: usize, onde: &str) -> Resultado<(u16, u16, No)> {
         dir,
         No {
             nome,
+            nome_bytes: bytes.to_vec(),
             setor,
             tamanho,
             atributos,

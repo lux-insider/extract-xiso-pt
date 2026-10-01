@@ -162,8 +162,8 @@ fn de_imagem(entradas: &[Entrada]) -> Vec<Item> {
     entradas
         .iter()
         .map(|e| Item {
-            // mesmos bytes do nome: Latin-1 de volta para byte, UTF-8 como UTF-8
-            nome: bytes_do_nome(&e.nome),
+            // os bytes do nome como estão na origem (ver `Entrada::nome_bytes`)
+            nome: e.nome_bytes.clone(),
             diretorio: e.eh_diretorio(),
             tamanho: if e.eh_diretorio() { 0 } else { e.tamanho },
             origem: Origem::Imagem { setor: e.setor },
@@ -172,21 +172,6 @@ fn de_imagem(entradas: &[Entrada]) -> Vec<Item> {
             remendo: None,
         })
         .collect()
-}
-
-/// Volta um nome lido da imagem aos bytes originais: ele veio de UTF-8 válido
-/// ou de Latin-1 (cada byte um caractere até U+00FF).
-fn bytes_do_nome(nome: &str) -> Vec<u8> {
-    if nome.is_ascii() {
-        return nome.as_bytes().to_vec();
-    }
-    let latin1: Option<Vec<u8>> = nome.chars().map(|c| u8::try_from(c as u32).ok()).collect();
-    match latin1 {
-        // se os bytes Latin-1 formam UTF-8 válido, a leitura teria dado o
-        // texto UTF-8, não este — então o original era mesmo UTF-8
-        Some(b) if std::str::from_utf8(&b).is_err() => b,
-        _ => nome.as_bytes().to_vec(),
-    }
 }
 
 /// Um nome que vai para a imagem nova: as mesmas regras da leitura (a
