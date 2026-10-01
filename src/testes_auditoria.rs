@@ -294,3 +294,29 @@ fn v1_sobreposicao_nao_vizinha_e_avisada() {
         ]
     );
 }
+
+/// S-9: com `-d a/b/c` e `a` inexistente, uma falha apaga também `a` e
+/// `a/b`, que a extração criou (antes, só `a/b/c` saía).
+#[test]
+fn s9_falha_apaga_tambem_as_pastas_pai_criadas() {
+    let _v = EXTRACAO.lock().unwrap_or_else(|e| e.into_inner());
+    let t = Temp::nova();
+    let iso = imagem_valida().gravar(&t.0);
+    let d = t.0.join("a/b/c");
+    // a árvore é lida antes; o cancelamento chega já na extração, depois
+    // de o destino ter sido criado
+    let mut img = crate::imagem::Imagem::abrir(&iso).unwrap();
+    let raiz = crate::arvore::ler(&mut img).unwrap();
+    let p = crate::progresso::Progresso::novo("", "", 0, true);
+    crate::sistema::marcar_cancelamento();
+    let r = crate::extrair::extrair(&mut img, &raiz, &d, &opcoes(), &p);
+    crate::sistema::limpar_cancelamento();
+    assert!(matches!(r, Err(Erro::Cancelado)));
+    assert!(
+        !t.0.join("a").exists(),
+        "a pasta a/ deveria ter sido apagada"
+    );
+    // e quando dá certo, as três ficam
+    extrair_em(&iso, &d, &opcoes()).unwrap();
+    assert!(d.join("a.bin").is_file());
+}
