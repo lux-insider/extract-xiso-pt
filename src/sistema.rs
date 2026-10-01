@@ -64,10 +64,15 @@ extern "C" fn tratar_sigterm(_sinal: libc::c_int) {
     CANCELADO.store(true, Ordering::SeqCst);
 }
 
-/// Instala os handlers de Ctrl+C (SIGINT) e SIGTERM. Deliberadamente **sem**
-/// `SA_RESTART`: assim um `read` bloqueado num prompt do assistente devolve
-/// `EINTR` em vez de ser reiniciado silenciosamente, e quem estiver esperando
-/// entrada percebe o cancelamento na hora.
+/// Instala os handlers de Ctrl+C (SIGINT), SIGTERM e SIGHUP. Deliberadamente
+/// **sem** `SA_RESTART`: assim um `read` bloqueado num prompt do assistente
+/// devolve `EINTR` em vez de ser reiniciado silenciosamente, e quem estiver
+/// esperando entrada percebe o cancelamento na hora.
+///
+/// SIGHUP chega quando o terminal é fechado; sem tratador, ele matava o
+/// processo no meio e deixava o `.parcial` para trás. Ele cancela como o
+/// SIGTERM — a não ser que já chegue ignorado (`nohup`): quem rodou assim
+/// quer que a operação continue sem o terminal.
 #[cfg(unix)]
 pub fn instalar_cancelamento() {
     unsafe fn instalar(sinal: libc::c_int, tratador: extern "C" fn(libc::c_int)) {
@@ -82,6 +87,12 @@ pub fn instalar_cancelamento() {
     unsafe {
         instalar(libc::SIGINT, tratar_sigint);
         instalar(libc::SIGTERM, tratar_sigterm);
+        let mut atual: libc::sigaction = std::mem::zeroed();
+        let ignorado = libc::sigaction(libc::SIGHUP, std::ptr::null(), &mut atual) == 0
+            && atual.sa_sigaction == libc::SIG_IGN;
+        if !ignorado {
+            instalar(libc::SIGHUP, tratar_sigterm);
+        }
     }
 }
 
@@ -89,16 +100,36 @@ pub fn instalar_cancelamento() {
 /// regra do Linux: o primeiro marca o cancelamento (a conversão para no
 /// próximo bloco e apaga a saída incompleta); o segundo devolve `FALSE` e o
 /// sistema encerra o processo na hora, para quem não quer esperar.
+///
+/// Fechar a janela do console, sair da sessão ou desligar chegam como
+/// `CTRL_CLOSE_EVENT`, `CTRL_LOGOFF_EVENT` e `CTRL_SHUTDOWN_EVENT`. Para
+/// eles o Windows encerra o processo assim que o tratador volta (e, de
+/// qualquer jeito, uns 5 s depois). Então o tratador marca o cancelamento e
+/// espera: nesse tempo a thread principal vê o pedido, apaga o que a
+/// operação criou e sai pelo `process::exit`, que encerra o processo (e
+/// esta espera) antes do prazo.
 #[cfg(windows)]
 unsafe extern "system" fn tratar_console(tipo: u32) -> windows_sys::Win32::Foundation::BOOL {
-    use windows_sys::Win32::System::Console::{CTRL_BREAK_EVENT, CTRL_C_EVENT};
-    if tipo != CTRL_C_EVENT && tipo != CTRL_BREAK_EVENT {
-        return 0;
-    }
-    if CANCELADO.swap(true, Ordering::SeqCst) {
-        0
-    } else {
-        1
+    use windows_sys::Win32::System::Console::{
+        CTRL_BREAK_EVENT, CTRL_C_EVENT, CTRL_CLOSE_EVENT, CTRL_LOGOFF_EVENT, CTRL_SHUTDOWN_EVENT,
+    };
+    match tipo {
+        CTRL_C_EVENT | CTRL_BREAK_EVENT => {
+            if CANCELADO.swap(true, Ordering::SeqCst) {
+                0
+            } else {
+                1
+            }
+        }
+        CTRL_CLOSE_EVENT | CTRL_LOGOFF_EVENT | CTRL_SHUTDOWN_EVENT => {
+            CANCELADO.store(true, Ordering::SeqCst);
+            let inicio = std::time::Instant::now();
+            while inicio.elapsed() < std::time::Duration::from_millis(4500) {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            1
+        }
+        _ => 0,
     }
 }
 
@@ -213,5 +244,30 @@ mod testes {
         assert!(cancelado());
         limpar_cancelamento();
         assert!(!cancelado());
+    }
+
+    /// S-5: SIGHUP (terminal fechado) cancela como o SIGTERM, mas não quando
+    /// já chega ignorado (`nohup`).
+    #[cfg(unix)]
+    #[test]
+    fn s5_sighup_cancela_mas_respeita_nohup() {
+        let _v = crate::testes::EXTRACAO
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        unsafe {
+            // como o nohup deixa
+            libc::signal(libc::SIGHUP, libc::SIG_IGN);
+            instalar_cancelamento();
+            libc::raise(libc::SIGHUP);
+        }
+        assert!(!cancelado(), "com nohup, SIGHUP não cancela");
+        unsafe {
+            libc::signal(libc::SIGHUP, libc::SIG_DFL);
+            instalar_cancelamento();
+            libc::raise(libc::SIGHUP);
+        }
+        let cancelou = cancelado();
+        limpar_cancelamento();
+        assert!(cancelou, "SIGHUP deveria cancelar a operação");
     }
 }
