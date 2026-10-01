@@ -156,8 +156,12 @@ pub fn hashes(caminho: &Path, progresso: &Progresso) -> Resultado<Hashes> {
         h
     }
 
-    let mut f = File::open(caminho).ctx(Operacao::Abrir, caminho)?;
+    let f = File::open(caminho).ctx(Operacao::Abrir, caminho)?;
     let tamanho = f.metadata().ctx(Operacao::Consultar, caminho)?.len();
+    // no máximo um byte além do tamanho: o bastante para perceber que o
+    // arquivo mudou, sem ler para sempre se o caminho virou outra coisa
+    // (um link para /dev/zero) depois de a estrutura ter sido conferida
+    let mut f = f.take(tamanho.saturating_add(1));
     std::thread::scope(|escopo| {
         // fila curta: no máximo alguns blocos na memória por hash
         let (tx_crc, rx_crc) = sync_channel::<Arc<Vec<u8>>>(4);
@@ -447,6 +451,18 @@ mod testes {
         );
         assert_eq!(r[1].jogo, "Outro");
         assert_eq!(entidades("a&#233;&#xE7;&lt;&bogus;"), "aéç<&bogus;");
+    }
+
+    /// V-2: um caminho que não termina (ou cresce sem parar) não deixa a
+    /// leitura dos hashes rodando para sempre.
+    #[cfg(unix)]
+    #[test]
+    fn v2_hashes_de_algo_sem_fim_terminam_com_erro() {
+        let r = hashes(
+            Path::new("/dev/zero"),
+            &Progresso::novo_quieto("", "", 0, false, true),
+        );
+        assert!(matches!(r, Err(Erro::Imagem(_))), "{r:?}");
     }
 
     #[test]
