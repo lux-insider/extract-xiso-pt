@@ -216,3 +216,40 @@ fn jogo_pequeno(t: &Temp) -> (PathBuf, PathBuf) {
     assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
     (jogo, iso)
 }
+
+/// E-2: `verificar --progresso-json` relata o erro também como evento
+/// `erro` no protocolo (e continua mostrando o texto no stderr).
+#[test]
+fn e2_verificar_progresso_json_emite_evento_de_erro() {
+    let t = Temp::nova("e2");
+    let nada = t.0.join("nada.iso");
+    let o = rodar(&[
+        "verificar".as_ref(),
+        nada.as_os_str(),
+        "--sem-dat".as_ref(),
+        "--progresso-json".as_ref(),
+    ]);
+    assert_eq!(o.status.code(), Some(1));
+    let out = String::from_utf8_lossy(&o.stdout);
+    let ultima = out.lines().last().unwrap_or_default();
+    assert!(ultima.starts_with("{\"evento\":\"erro\""), "{out}");
+    assert!(ultima.contains("não existe"), "{ultima}");
+    assert!(String::from_utf8_lossy(&o.stderr).contains("não existe"));
+}
+
+/// E-3: erro de uso sai com 1 (o 2 é o "não confere" do verificar);
+/// `--help` e `--version` continuam saindo com 0.
+#[test]
+fn e3_erro_de_uso_nao_se_confunde_com_nao_confere() {
+    let o = rodar(&[
+        "verificar".as_ref(),
+        "x.iso".as_ref(),
+        "--opcao-nova".as_ref(),
+    ]);
+    assert_eq!(o.status.code(), Some(1));
+    assert!(!o.stderr.is_empty());
+    let o = rodar(&[]);
+    assert_eq!(o.status.code(), Some(1));
+    assert_eq!(rodar(&["--version".as_ref()]).status.code(), Some(0));
+    assert_eq!(rodar(&["--help".as_ref()]).status.code(), Some(0));
+}
