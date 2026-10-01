@@ -13,6 +13,7 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use crate::arvore;
 use crate::erro::{Erro, Resultado};
 use crate::temporario;
 use crate::verificar::{Rom, ler_dat};
@@ -21,7 +22,8 @@ use crate::verificar::{Rom, ler_dat};
 const MAX_DAT: usize = 64 * 1024 * 1024;
 
 pub struct Dat {
-    /// Nome do arquivo instalado.
+    /// Nome do arquivo: o da pasta dos .dat, para um instalado; o de dentro
+    /// do .zip (ou o do .dat), para um recém-lido.
     pub arquivo: String,
     /// `<name>` do cabeçalho (ex.: "Microsoft - Xbox 360").
     pub sistema: String,
@@ -148,7 +150,19 @@ pub fn instalados() -> (Vec<Dat>, Vec<String>) {
     arquivos.sort();
     for a in arquivos {
         match carregar(&a) {
-            Ok(mut d) => dats.append(&mut d),
+            Ok(mut d) => {
+                // o nome real na pasta, não o de dentro de um .zip que
+                // alguém salvou com extensão .dat: é ele que `instalar`
+                // apaga ao trocar de versão
+                let nome = a
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                for x in &mut d {
+                    x.arquivo.clone_from(&nome);
+                }
+                dats.append(&mut d)
+            }
             Err(e) => avisos.push(format!("{}: {e}", a.display())),
         }
     }
@@ -169,7 +183,7 @@ pub fn instalar(origem: &Path) -> Resultado<Vec<(String, String, PathBuf)>> {
         let base = Path::new(&nome.replace('\\', "/"))
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
-            .filter(|n| !n.is_empty() && n != "." && n != "..")
+            .filter(|n| arvore::validar_nome(n, n).is_ok())
             .ok_or_else(|| Erro::Destino(format!("nome de .dat inválido: {nome}")))?;
         let alvo = destino.join(&base);
         let temp = temporario::caminho_de(&alvo);
@@ -180,10 +194,15 @@ pub fn instalar(origem: &Path) -> Resultado<Vec<(String, String, PathBuf)>> {
         fs::rename(&temp, &alvo).inspect_err(|_| {
             fs::remove_file(&temp).ok();
         })?;
-        for velho in existentes
-            .iter()
-            .filter(|e| !d.sistema.is_empty() && e.sistema == d.sistema && e.arquivo != base)
-        {
+        // a versão antiga do mesmo sistema: só um nome simples da pasta, e
+        // nunca o recém-instalado (sem diferenciar maiúsculas, porque no
+        // Windows `X.dat` e `x.dat` são o mesmo arquivo)
+        for velho in existentes.iter().filter(|e| {
+            !d.sistema.is_empty()
+                && e.sistema == d.sistema
+                && !e.arquivo.eq_ignore_ascii_case(&base)
+                && arvore::validar_nome(&e.arquivo, &e.arquivo).is_ok()
+        }) {
             fs::remove_file(destino.join(&velho.arquivo)).ok();
         }
         feitos.push((d.sistema, d.versao, alvo));
@@ -343,11 +362,15 @@ mod testes {
         assert!(zip::ler(b"PK\x03\x04lixo").is_err());
     }
 
+    /// Os testes que mudam `EXTRACT_XISO_PT_DATS` rodam um de cada vez.
+    static PASTA_DATS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn instalar_troca_a_versao_antiga_do_mesmo_sistema() {
+        let _v = PASTA_DATS.lock().unwrap_or_else(|e| e.into_inner());
         let d = std::env::temp_dir().join(format!("extract-xiso-pt-dats-{}", std::process::id()));
         fs::create_dir_all(&d).unwrap();
-        // SAFETY: só este teste usa a variável
+        // SAFETY: quem mexe na variável segura PASTA_DATS
         unsafe { std::env::set_var("EXTRACT_XISO_PT_DATS", &d) };
         let velho = d.join("velho.zip");
         fs::write(&velho, zip_com("Xbox 360 (1).dat", DAT.as_bytes())).unwrap();
@@ -359,6 +382,45 @@ mod testes {
         unsafe { std::env::remove_var("EXTRACT_XISO_PT_DATS") };
         fs::remove_dir_all(&d).ok();
         assert!(avisos.is_empty());
+        assert_eq!(dats.len(), 1);
+        assert_eq!(dats[0].versao, "2026-07-01");
+    }
+
+    /// S-3: um .dat instalado que é um .zip disfarçado não faz `instalar`
+    /// apagar um arquivo fora da pasta (pelo nome de dentro do zip); o que
+    /// sai é o arquivo antigo de verdade.
+    #[test]
+    fn s3_instalar_nao_apaga_fora_da_pasta_dos_dat() {
+        let _v = PASTA_DATS.lock().unwrap_or_else(|e| e.into_inner());
+        let base =
+            std::env::temp_dir().join(format!("extract-xiso-pt-dats-s3-{}", std::process::id()));
+        let d = base.join("dats");
+        let vitima = base.join("vitima");
+        fs::create_dir_all(&d).unwrap();
+        fs::create_dir_all(&vitima).unwrap();
+        let importante = vitima.join("importante.dat");
+        fs::write(&importante, b"meu arquivo").unwrap();
+        // SAFETY: quem mexe na variável segura PASTA_DATS
+        unsafe { std::env::set_var("EXTRACT_XISO_PT_DATS", &d) };
+        fs::write(
+            d.join("disfarcado.dat"),
+            zip_com(&importante.to_string_lossy(), DAT.as_bytes()),
+        )
+        .unwrap();
+        let novo = base.join("novo.dat");
+        fs::write(&novo, DAT.replace("2026-06-15", "2026-07-01")).unwrap();
+        let r = instalar(&novo);
+        let (dats, _) = instalados();
+        unsafe { std::env::remove_var("EXTRACT_XISO_PT_DATS") };
+        let sobrou_importante = importante.exists();
+        let sobrou_disfarcado = d.join("disfarcado.dat").exists();
+        fs::remove_dir_all(&base).ok();
+        r.unwrap();
+        assert!(
+            sobrou_importante,
+            "apagou um arquivo fora da pasta dos .dat"
+        );
+        assert!(!sobrou_disfarcado, "a versão antiga deveria ter saído");
         assert_eq!(dats.len(), 1);
         assert_eq!(dats[0].versao, "2026-07-01");
     }
