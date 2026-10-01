@@ -1,6 +1,9 @@
 //! Testes do programa de verdade (o binário), para o que só aparece de fora:
 //! códigos de saída, protocolo `--progresso-json`, saída padrão fechada.
 
+// Alguns cenários (sinais) só existem no Unix.
+#![cfg_attr(not(unix), allow(dead_code))]
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
@@ -100,4 +103,75 @@ fn s4_saida_padrao_fechada_nao_aborta() {
     assert!(o.status.success(), "{:?} {err}", o.status);
     assert_eq!(fs::read_dir(d.join("media")).unwrap().count(), 3000);
     assert!(sem_parcial(&d));
+}
+
+/// XISO mínima montada à mão: um arquivo `grande.bin` de `tamanho` bytes
+/// (esparso, para não ocupar disco na origem).
+fn imagem_com_um_arquivo_grande(t: &Temp, tamanho: u32) -> PathBuf {
+    use std::io::{Seek, SeekFrom, Write};
+    const S: u64 = 2048;
+    let mut descritor = vec![0u8; S as usize];
+    descritor[0..20].copy_from_slice(b"MICROSOFT*XBOX*MEDIA");
+    descritor[20..24].copy_from_slice(&33u32.to_le_bytes());
+    descritor[24..28].copy_from_slice(&(S as u32).to_le_bytes());
+    descritor[0x7EC..0x800].copy_from_slice(b"MICROSOFT*XBOX*MEDIA");
+    let mut tabela = vec![0xFFu8; S as usize];
+    let nome = b"grande.bin";
+    tabela[0..4].copy_from_slice(&[0, 0, 0, 0]);
+    tabela[4..8].copy_from_slice(&34u32.to_le_bytes());
+    tabela[8..12].copy_from_slice(&tamanho.to_le_bytes());
+    tabela[12] = 0x20;
+    tabela[13] = nome.len() as u8;
+    tabela[14..14 + nome.len()].copy_from_slice(nome);
+
+    let iso = t.0.join("grande.iso");
+    let mut f = fs::File::create(&iso).unwrap();
+    f.set_len(34 * S + tamanho as u64).unwrap();
+    f.seek(SeekFrom::Start(32 * S)).unwrap();
+    f.write_all(&descritor).unwrap();
+    f.write_all(&tabela).unwrap();
+    iso
+}
+
+/// S-5: fechar o terminal (SIGHUP) no meio da extração cancela de forma
+/// limpa: código 130 e nada do que foi criado fica para trás.
+#[cfg(unix)]
+#[test]
+fn s5_sighup_no_meio_da_extracao_limpa_tudo() {
+    use std::io::{BufRead, BufReader};
+    let t = Temp::nova("s5");
+    let iso = imagem_com_um_arquivo_grande(&t, 1 << 30);
+    let d = t.0.join("saida");
+    let mut filho = Command::new(BIN)
+        .args([
+            "extrair".as_ref(),
+            iso.as_os_str(),
+            "-d".as_ref(),
+            d.as_os_str(),
+        ])
+        .arg("--progresso-json")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut linhas = BufReader::new(filho.stdout.take().unwrap()).lines();
+    // o primeiro evento de progresso: o .parcial já existe
+    for l in linhas.by_ref() {
+        if l.unwrap().contains("\"evento\":\"progresso\"") {
+            break;
+        }
+    }
+    let ok = Command::new("kill")
+        .args(["-HUP", &filho.id().to_string()])
+        .status()
+        .unwrap();
+    assert!(ok.success());
+    let ultima = linhas.map(|l| l.unwrap()).last().unwrap_or_default();
+    let status = filho.wait().unwrap();
+    assert_eq!(status.code(), Some(130), "{status:?}");
+    assert!(ultima.contains("\"evento\":\"erro\""), "{ultima}");
+    assert!(
+        !d.exists(),
+        "a pasta criada pela extração deveria ter sido apagada"
+    );
 }
