@@ -270,3 +270,27 @@ fn s8_temporario_igual_a_origem_e_recusado() {
     assert_eq!(fs::read(&origem).unwrap(), antes);
     assert!(!t.0.join("a.iso").exists());
 }
+
+/// V-1: um arquivo que contém dois menores gera aviso para os dois (antes,
+/// só o vizinho na ordem dos setores era comparado).
+#[test]
+fn v1_sobreposicao_nao_vizinha_e_avisada() {
+    let t = Temp::nova();
+    let tab = crate::testes::tabela(&[
+        (b"b", 50, 10, 0x20),
+        (b"c", 60, 10, 0x20),
+        (b"grande", 40, 100 * 2048, 0x20),
+    ]);
+    let mut c = crate::testes::Construtor::novo(140);
+    c.raiz(33, tab.len() as u32).por(33, &tab);
+    let iso = c.gravar(&t.0);
+    let mut img = crate::imagem::Imagem::abrir(&iso).unwrap();
+    let (_, avisos) = crate::verificar::estrutura(&mut img).unwrap();
+    assert_eq!(
+        avisos,
+        [
+            "grande e b usam os mesmos setores",
+            "grande e c usam os mesmos setores"
+        ]
+    );
+}

@@ -103,15 +103,26 @@ pub fn estrutura(img: &mut Imagem) -> Resultado<(Vec<Entrada>, Vec<String>)> {
     });
     trechos.sort_by_key(|t| t.0);
     let mut sobrepostos = 0usize;
-    for par in trechos.windows(2) {
-        if par[0].0 + par[0].1 > par[1].0 {
+    // o trecho que vai mais longe entre os anteriores: um arquivo grande
+    // pode conter vários menores, e comparar só com o vizinho perderia
+    // todos menos o primeiro
+    let mut mais_longe = 0usize;
+    for i in 1..trechos.len() {
+        let (anterior, atual) = (&trechos[i - 1], &trechos[i]);
+        let par = if anterior.0 + anterior.1 > atual.0 {
+            Some(&anterior.2)
+        } else {
+            let m = &trechos[mais_longe];
+            (m.0 + m.1 > atual.0).then_some(&m.2)
+        };
+        if let Some(outro) = par {
             sobrepostos += 1;
             if sobrepostos <= 10 {
-                avisos.push(format!(
-                    "{} e {} usam os mesmos setores",
-                    par[0].2, par[1].2
-                ));
+                avisos.push(format!("{outro} e {} usam os mesmos setores", atual.2));
             }
+        }
+        if atual.0 + atual.1 > trechos[mais_longe].0 + trechos[mais_longe].1 {
+            mais_longe = i;
         }
     }
     if sobrepostos > 10 {
