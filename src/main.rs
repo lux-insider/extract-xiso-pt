@@ -22,6 +22,8 @@ mod sistema;
 mod terminal;
 #[cfg(test)]
 mod testes;
+#[cfg(test)]
+mod testes_saida;
 mod verificar;
 
 use std::path::Path;
