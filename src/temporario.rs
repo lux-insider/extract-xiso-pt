@@ -22,6 +22,14 @@ pub fn caminho_de(caminho: &Path) -> PathBuf {
     PathBuf::from(p)
 }
 
+/// `caminho` + `.n` + sufixo temporário: a alternativa quando o nome
+/// normal já é um arquivo de verdade (ver `extrair`).
+pub fn caminho_numerado(caminho: &Path, n: u32) -> PathBuf {
+    let mut p = caminho.as_os_str().to_owned();
+    p.push(format!(".{n}{SUFIXO}"));
+    PathBuf::from(p)
+}
+
 /// Cria `caminho` para escrita, vazio, sem seguir links.
 pub fn criar(caminho: &Path) -> io::Result<File> {
     match fs::symlink_metadata(caminho) {
