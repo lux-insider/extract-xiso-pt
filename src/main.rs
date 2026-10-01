@@ -11,6 +11,27 @@
 //!   sistema.rs   espaço livre e Ctrl+C/SIGTERM limpos (do iso2god-pt)
 //!   temporario.rs arquivos .parcial criados sem seguir links
 
+/// `println!` que não entra em pânico quando a saída padrão está fechada
+/// (`listar | head`, o programa que lia o `--progresso-json` fechou o pipe,
+/// a janela do console foi fechada). Com `panic = "abort"`, o pânico matava
+/// o processo no meio da operação, sem apagar o que ela tinha criado; assim
+/// a escrita perdida é ignorada e a operação termina ou limpa normalmente.
+macro_rules! saida {
+    () => {
+        $crate::terminal::escrever(false, format_args!("\n"))
+    };
+    ($($arg:tt)*) => {
+        $crate::terminal::escrever(false, format_args!("{}\n", format_args!($($arg)*)))
+    };
+}
+
+/// O mesmo para a saída de erros (`eprintln!`).
+macro_rules! saida_erro {
+    ($($arg:tt)*) => {
+        $crate::terminal::escrever(true, format_args!("{}\n", format_args!($($arg)*)))
+    };
+}
+
 mod arvore;
 mod cli;
 mod criar;
@@ -214,15 +235,15 @@ fn info(caminho: &Path, json: bool) -> Resultado<()> {
         bytes: t.bytes,
     };
     if json {
-        println!("{}", serde_json::to_string(&i).unwrap_or_default());
+        saida!("{}", serde_json::to_string(&i).unwrap_or_default());
         return Ok(());
     }
     let tema = Tema::detectar();
-    println!(
+    saida!(
         "{}",
         tema.caixa_titulo(&titulo_app(), emo::APP(), LARGURA, true)
     );
-    println!(
+    saida!(
         "{}",
         tema.campo(
             "Imagem",
@@ -231,8 +252,8 @@ fn info(caminho: &Path, json: bool) -> Resultado<()> {
             16
         )
     );
-    println!("{}", tema.campo("Layout", i.layout, emo::DISCO(), 16));
-    println!(
+    saida!("{}", tema.campo("Layout", i.layout, emo::DISCO(), 16));
+    saida!(
         "{}",
         tema.campo(
             "Console",
@@ -242,9 +263,9 @@ fn info(caminho: &Path, json: bool) -> Resultado<()> {
         )
     );
     if let Some(d) = &i.criacao {
-        println!("{}", tema.campo("Criada em", d, emo::TEMPO(), 16));
+        saida!("{}", tema.campo("Criada em", d, emo::TEMPO(), 16));
     }
-    println!(
+    saida!(
         "{}",
         tema.campo(
             "Conteúdo",
@@ -258,7 +279,7 @@ fn info(caminho: &Path, json: bool) -> Resultado<()> {
             16
         )
     );
-    println!(
+    saida!(
         "{}",
         tema.campo("Volume", &fmt_bytes(i.tamanho_volume), emo::RESUMO(), 16)
     );
@@ -269,25 +290,25 @@ fn listar(caminho: &Path, json: bool) -> Resultado<()> {
     let mut img = Imagem::abrir(caminho)?;
     let raiz = arvore::ler(&mut img)?;
     if json {
-        println!("{}", serde_json::to_string(&raiz).unwrap_or_default());
+        saida!("{}", serde_json::to_string(&raiz).unwrap_or_default());
         return Ok(());
     }
     let tema = Tema::detectar();
     arvore::percorrer(&raiz, &mut |e, caminho| {
         if e.eh_diretorio() {
-            println!(
+            saida!(
                 "{}",
                 tema.c(&format!("{caminho}/"), &[&terminal::c::azul()])
             );
         } else {
-            println!(
+            saida!(
                 "{caminho}  {}",
                 tema.c(&fmt_bytes(e.tamanho as u64), &[&terminal::c::cinza()])
             );
         }
     });
     let t = arvore::totais(&raiz);
-    println!();
+    saida!();
     tema.info_linha(
         emo::RESUMO(),
         &format!(
@@ -313,11 +334,11 @@ fn extrair_cmd(
 
     let tema = Tema::detectar();
     if !json {
-        println!(
+        saida!(
             "{}",
             tema.caixa_titulo(&titulo_app(), emo::APP(), LARGURA, true)
         );
-        println!(
+        saida!(
             "{}",
             tema.campo(
                 "Imagem",
@@ -326,7 +347,7 @@ fn extrair_cmd(
                 16
             )
         );
-        println!(
+        saida!(
             "{}",
             tema.campo(
                 "Destino",
@@ -335,7 +356,7 @@ fn extrair_cmd(
                 16
             )
         );
-        println!(
+        saida!(
             "{}",
             tema.campo(
                 "Conteúdo",
@@ -370,15 +391,15 @@ fn criar_cmd(pasta: &Path, saida: &Path, opcoes: criar::Opcoes, json: bool) -> R
     let prep = criar::preparar(&mut fonte, &opcoes)?;
     let tema = Tema::detectar();
     if !json {
-        println!(
+        saida!(
             "{}",
             tema.caixa_titulo(&titulo_app(), emo::APP(), LARGURA, true)
         );
-        println!(
+        saida!(
             "{}",
             tema.campo("Pasta", &terminal::encurtar_home(pasta), emo::ORIGEM(), 16)
         );
-        println!(
+        saida!(
             "{}",
             tema.campo(
                 "Imagem",
@@ -387,7 +408,7 @@ fn criar_cmd(pasta: &Path, saida: &Path, opcoes: criar::Opcoes, json: bool) -> R
                 16
             )
         );
-        println!(
+        saida!(
             "{}",
             tema.campo(
                 "Conteúdo",
@@ -413,11 +434,11 @@ fn reescrever_cmd(
     let layout = img.layout.rotulo();
     let tema = Tema::detectar();
     if !json {
-        println!(
+        saida!(
             "{}",
             tema.caixa_titulo(&titulo_app(), emo::APP(), LARGURA, true)
         );
-        println!(
+        saida!(
             "{}",
             tema.campo(
                 "Imagem",
@@ -431,7 +452,7 @@ fn reescrever_cmd(
         } else {
             terminal::encurtar_home(saida)
         };
-        println!("{}", tema.campo("Nova", &destino, emo::DESTINO(), 16));
+        saida!("{}", tema.campo("Nova", &destino, emo::DESTINO(), 16));
     }
     let antes = std::fs::metadata(caminho)?.len();
     let mut fonte = criar::Fonte::Imagem(&mut img, raiz);
@@ -540,11 +561,11 @@ fn verificar_cmd(
     };
     let explicito = dat.is_some();
     if texto {
-        println!(
+        saida!(
             "{}",
             tema.caixa_titulo(&titulo_app(), emo::APP(), LARGURA, true)
         );
-        println!(
+        saida!(
             "{}",
             tema.campo(
                 "Imagem",
@@ -564,7 +585,7 @@ fn verificar_cmd(
                 .iter()
                 .map(|d| format!("{} ({})", d.sistema, d.versao))
                 .collect();
-            println!(
+            saida!(
                 "{}",
                 tema.campo(".dat", &nomes.join(" · "), emo::DADOS(), 16)
             );
@@ -584,7 +605,7 @@ fn verificar_cmd(
     });
 
     if json {
-        println!("{}", serde_json::to_string(&rel).unwrap_or_default());
+        saida!("{}", serde_json::to_string(&rel).unwrap_or_default());
     } else if progresso_json {
         progresso::emitir_verificado(&rel);
     } else {
@@ -593,7 +614,7 @@ fn verificar_cmd(
             Some(false) => " · tamanho diferente de um disco completo",
             None => " · enxuta (só o sistema de arquivos)",
         };
-        println!(
+        saida!(
             "{}",
             tema.campo(
                 "Layout",
@@ -602,7 +623,7 @@ fn verificar_cmd(
                 16
             )
         );
-        println!(
+        saida!(
             "{}",
             tema.campo(
                 "Estrutura",
@@ -617,7 +638,7 @@ fn verificar_cmd(
         for a in &rel.avisos {
             tema.aviso(a);
         }
-        println!(
+        saida!(
             "{}",
             tema.campo(
                 "Tamanho",
@@ -630,9 +651,9 @@ fn verificar_cmd(
                 16
             )
         );
-        println!("{}", tema.campo("CRC32", &rel.hashes.crc32, "", 16));
-        println!("{}", tema.campo("MD5", &rel.hashes.md5, "", 16));
-        println!("{}", tema.campo("SHA-1", &rel.hashes.sha1, "", 16));
+        saida!("{}", tema.campo("CRC32", &rel.hashes.crc32, "", 16));
+        saida!("{}", tema.campo("MD5", &rel.hashes.md5, "", 16));
+        saida!("{}", tema.campo("SHA-1", &rel.hashes.sha1, "", 16));
         match &rel.dat {
             None => {
                 tema.sucesso("Imagem íntegra: a estrutura confere e todos os bytes foram lidos.")
@@ -640,7 +661,7 @@ fn verificar_cmd(
             Some(d) => match d.situacao {
                 verificar::Situacao::Confere => {
                     if let Some(f) = &d.fonte {
-                        println!("{}", tema.campo("Redump", f, emo::DADOS(), 16));
+                        saida!("{}", tema.campo("Redump", f, emo::DADOS(), 16));
                     }
                     tema.sucesso(&format!(
                         "Imagem original, idêntica ao Redump: {}",
@@ -685,12 +706,12 @@ fn dats_cmd(acao: cli::AcaoDats) -> Resultado<()> {
         cli::AcaoDats::Listar => {
             let pasta = dats::pasta();
             let (lista, avisos) = dats::instalados();
-            println!(
+            saida!(
                 "{}",
                 tema.caixa_titulo(&titulo_app(), emo::APP(), LARGURA, true)
             );
             if let Some(p) = &pasta {
-                println!(
+                saida!(
                     "{}",
                     tema.campo("Pasta", &terminal::encurtar_home(p), emo::DESTINO(), 16)
                 );
@@ -702,7 +723,7 @@ fn dats_cmd(acao: cli::AcaoDats) -> Resultado<()> {
                 tema.aviso("Nenhum .dat instalado. Baixe em redump.org e use: extract-xiso-pt dats instalar <arquivo.zip>");
             }
             for d in &lista {
-                println!(
+                saida!(
                     "{}",
                     tema.campo(
                         &d.sistema,
