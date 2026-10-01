@@ -372,7 +372,12 @@ fn escrever_lista(
     tema: &Tema,
 ) -> std::io::Result<()> {
     if json {
-        serde_json::to_writer(&mut *s, raiz)?;
+        // `to_vec`, e não `to_writer`: o serializador da árvore já existe no
+        // binário para escrever num `Vec`, e uma segunda cópia dele para o
+        // `BufWriter` custaria 7 KB. A árvore tem no máximo um milhão de
+        // entradas (ver `arvore`), então o texto em memória tem teto.
+        let v = serde_json::to_vec(raiz).unwrap_or_default();
+        s.write_all(&v)?;
         return writeln!(s);
     }
     let mut r = Ok(());
