@@ -10,9 +10,11 @@
 //! `dats instalar` grava no primeiro que já existir, ou cria o 3.
 
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use crate::erro::{Erro, Resultado};
+use crate::temporario;
 use crate::verificar::{Rom, ler_dat};
 
 /// Um .dat é texto de poucos MB; mais que isto não é um .dat.
@@ -170,8 +172,11 @@ pub fn instalar(origem: &Path) -> Resultado<Vec<(String, String, PathBuf)>> {
             .filter(|n| !n.is_empty() && n != "." && n != "..")
             .ok_or_else(|| Erro::Destino(format!("nome de .dat inválido: {nome}")))?;
         let alvo = destino.join(&base);
-        let temp = destino.join(format!("{base}.extract-xiso-pt.parcial"));
-        fs::write(&temp, texto.as_bytes())?;
+        let temp = temporario::caminho_de(&alvo);
+        if let Err(e) = temporario::criar(&temp).and_then(|mut f| f.write_all(texto.as_bytes())) {
+            fs::remove_file(&temp).ok();
+            return Err(e.into());
+        }
         fs::rename(&temp, &alvo).inspect_err(|_| {
             fs::remove_file(&temp).ok();
         })?;

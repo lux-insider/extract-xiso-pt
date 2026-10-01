@@ -9,6 +9,7 @@
 //!   progresso.rs barra no terminal ou eventos JSON (--progresso-json)
 //!   terminal.rs  cores, caixas e console do Windows (do iso2god-pt)
 //!   sistema.rs   espaço livre e Ctrl+C/SIGTERM limpos (do iso2god-pt)
+//!   temporario.rs arquivos .parcial criados sem seguir links
 
 mod arvore;
 mod cli;
@@ -19,6 +20,7 @@ mod extrair;
 mod imagem;
 mod progresso;
 mod sistema;
+mod temporario;
 mod terminal;
 #[cfg(test)]
 mod testes;
