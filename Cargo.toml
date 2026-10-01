@@ -13,16 +13,17 @@ thiserror = "1"
 # Protocolo de progresso estruturado (--progresso-json) e `listar --json`
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-# Interface de terminal: largura visível de texto com emoji e tamanho do terminal
+# Interface de terminal: largura visível de texto com emoji (o tamanho do
+# terminal vem direto de libc/windows-sys, sem outro crate)
 unicode-width = "0.2.2"
-terminal_size = "0.4.4"
 # `verificar`: CRC32, MD5 e SHA-1 da imagem (os hashes dos .dat do Redump)
 crc32fast = "1"
 md-5 = "0.11.0"
 sha1 = "0.11.0"
 # `dats instalar`: lê os .zip que o Redump entrega (deflate)
 miniz_oxide = { version = "0.8", default-features = false, features = ["with-alloc"] }
-# `crate::sistema`: espaço livre (statvfs) e Ctrl+C/SIGTERM limpos (sigaction)
+# `crate::sistema`: espaço livre (statvfs) e Ctrl+C/SIGTERM limpos (sigaction);
+# `crate::terminal`: largura do terminal (ioctl TIOCGWINSZ)
 libc = "0.2"
 
 # Só no Windows: sequências ANSI e UTF-8 no console, espaço livre e Ctrl+C.

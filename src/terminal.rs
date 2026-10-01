@@ -339,10 +339,60 @@ pub fn cortar(texto: &str, limite: usize) -> String {
     saida
 }
 
+/// Largura do terminal: a do primeiro entre stdout, stderr e stdin que for
+/// um terminal (tamanho zero conta como desconhecido), ou 80.
 fn colunas_terminal() -> usize {
-    terminal_size::terminal_size()
-        .map(|(w, _)| w.0 as usize)
-        .unwrap_or(80)
+    largura_terminal().unwrap_or(80)
+}
+
+#[cfg(unix)]
+fn largura_terminal() -> Option<usize> {
+    [libc::STDOUT_FILENO, libc::STDERR_FILENO, libc::STDIN_FILENO]
+        .into_iter()
+        .find_map(largura_de)
+}
+
+#[cfg(unix)]
+fn largura_de(fd: libc::c_int) -> Option<usize> {
+    // SAFETY: `isatty` e `ioctl(TIOCGWINSZ)` só leem o descritor e
+    // preenchem a estrutura passada
+    unsafe {
+        let mut w: libc::winsize = std::mem::zeroed();
+        (libc::isatty(fd) == 1
+            && libc::ioctl(fd, libc::TIOCGWINSZ, &mut w as *mut libc::winsize) == 0
+            && w.ws_row > 0
+            && w.ws_col > 0)
+            .then_some(w.ws_col as usize)
+    }
+}
+
+#[cfg(windows)]
+fn largura_terminal() -> Option<usize> {
+    use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
+    use windows_sys::Win32::System::Console::{
+        CONSOLE_SCREEN_BUFFER_INFO, GetConsoleScreenBufferInfo, GetStdHandle, STD_ERROR_HANDLE,
+        STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
+    };
+    [STD_OUTPUT_HANDLE, STD_ERROR_HANDLE, STD_INPUT_HANDLE]
+        .into_iter()
+        .find_map(|qual| {
+            // SAFETY: `GetConsoleScreenBufferInfo` só preenche a estrutura
+            // passada, e falha (devolve 0) se o handle não for um console
+            unsafe {
+                let h = GetStdHandle(qual);
+                if h.is_null() || h == INVALID_HANDLE_VALUE {
+                    return None;
+                }
+                let mut info: CONSOLE_SCREEN_BUFFER_INFO = std::mem::zeroed();
+                (GetConsoleScreenBufferInfo(h, &mut info) != 0)
+                    .then(|| (info.srWindow.Right - info.srWindow.Left + 1) as u16 as usize)
+            }
+        })
+}
+
+#[cfg(not(any(unix, windows)))]
+fn largura_terminal() -> Option<usize> {
+    None
 }
 
 // ================================================================== emoji
@@ -1132,5 +1182,38 @@ mod testes {
         assert_eq!(exibivel("a\u{9b}31mb"), "a\\u{9b}31mb");
         assert_eq!(exibivel("x\u{1b}[2J"), "x\\u{1b}[2J");
         assert_eq!(exibivel("gpj.\u{202E}exe"), "gpj.\\u{202e}exe");
+    }
+
+    /// L-1: a largura vem do terminal de verdade (um pseudoterminal com 123
+    /// colunas); um descritor que não é terminal não tem largura.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn l1_largura_de_um_pseudoterminal() {
+        unsafe {
+            let mestre = libc::posix_openpt(libc::O_RDWR | libc::O_NOCTTY);
+            assert!(mestre >= 0);
+            assert_eq!(libc::grantpt(mestre), 0);
+            assert_eq!(libc::unlockpt(mestre), 0);
+            let nome = std::ffi::CStr::from_ptr(libc::ptsname(mestre)).to_owned();
+            let escravo = libc::open(nome.as_ptr(), libc::O_RDWR | libc::O_NOCTTY);
+            assert!(escravo >= 0);
+            let w = libc::winsize {
+                ws_row: 40,
+                ws_col: 123,
+                ws_xpixel: 0,
+                ws_ypixel: 0,
+            };
+            assert_eq!(
+                libc::ioctl(mestre, libc::TIOCSWINSZ, &w as *const libc::winsize),
+                0
+            );
+            assert_eq!(super::largura_de(escravo), Some(123));
+            let arquivo = libc::open(c"/dev/null".as_ptr(), libc::O_RDONLY);
+            assert_eq!(super::largura_de(arquivo), None);
+            libc::close(arquivo);
+            libc::close(escravo);
+            libc::close(mestre);
+        }
+        assert!(super::colunas_terminal() > 0);
     }
 }
