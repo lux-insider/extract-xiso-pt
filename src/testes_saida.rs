@@ -61,7 +61,7 @@ fn manifesto(raiz: &Path) -> String {
 }
 
 /// SHA-1 de uma imagem com a data de criação zerada, e o tamanho dela.
-fn hash_imagem(iso: &Path) -> (u64, String) {
+pub(crate) fn hash_imagem(iso: &Path) -> (u64, String) {
     let mut b = fs::read(iso).unwrap();
     b[DATA_NO_DESCRITOR].fill(0);
     (b.len() as u64, sha1_hex(&b))
@@ -75,7 +75,7 @@ fn conferir(o_que: &str, obtido: &str, esperado: &str, detalhe: &str) {
     );
 }
 
-fn reescrever(origem: &Path, saida: &Path, sem_atualizacao: bool, liberar_midia: bool) {
+pub(crate) fn reescrever(origem: &Path, saida: &Path, sem_atualizacao: bool, liberar_midia: bool) {
     let o = criar::Opcoes {
         sobrescrever: false,
         sem_atualizacao,
@@ -211,16 +211,16 @@ fn criar_reescrever_e_extrair_pasta_de_jogo_identico() {
         &m,
     );
 
-    // Difere da imagem criada em 10 bytes: o nome "Ação.wav" (UTF-8 na
-    // origem) sai em Latin-1 na reescrita. É o comportamento da 0.2.2,
-    // registrado aqui de propósito; ver AUDITORIA.md, item A-6.
+    // Igual à imagem criada, byte a byte. Até a correção do A-6 (ver
+    // AUDITORIA.md) diferia em 10 bytes: o nome "Ação.wav", UTF-8 na
+    // origem, saía em Latin-1 na reescrita (valor antigo: 441bf9dc...).
     let iso2 = t.0.join("reescrita.iso");
     reescrever(&iso, &iso2, false, false);
     let (tam, h) = hash_imagem(&iso2);
     conferir(
         "reescrever (XISO)",
         &format!("{tam} {h}"),
-        "4587520 441bf9dcea205e0d363977e75233537a0709e7d0",
+        "4587520 ef1cd9baed362e5f76c2f3b192855386c319bb67",
         "",
     );
 
@@ -281,13 +281,16 @@ fn disco_xgd3_extrair_reescrever_listar_verificar_identico() {
         &m,
     );
 
+    // Nas duas reescritas o nome "Ação.txt" (UTF-8 na origem) sai em UTF-8.
+    // Até a correção do A-6 saía em Latin-1 (valores antigos: 1b19cdc9...
+    // e cabdeee0...). O nome Latin-1 "Aé.bin" sempre saiu igual.
     let x = t.0.join("enxuta.iso");
     reescrever(&iso, &x, false, false);
     let (tam, h) = hash_imagem(&x);
     conferir(
         "reescrever (XGD3)",
         &format!("{tam} {h}"),
-        "786432 1b19cdc972dc2cfacf9102c9df8f4335f2f792f5",
+        "786432 c94a0d5b17f7d8285e80671daf052c2db6f508b3",
         "",
     );
 
@@ -297,7 +300,7 @@ fn disco_xgd3_extrair_reescrever_listar_verificar_identico() {
     conferir(
         "reescrever -u (XGD3)",
         &format!("{tam} {h}"),
-        "786432 cabdeee060a384672c6eb681050fdcf19f0eb587",
+        "786432 73cacfe6509b8e16c3c852c8a527e1a915ccc07e",
         "",
     );
 
