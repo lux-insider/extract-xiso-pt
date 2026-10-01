@@ -29,12 +29,17 @@ teste, e nenhum código-fonte dele foi usado.
   padrão), só na cópia dentro da imagem nova.
 - **Segura com imagens estranhas ou maliciosas.** Nomes que sairiam da pasta
   de destino (`..`, `/`, `C:`), nomes que o Windows não aceita, laços na
-  árvore, profundidade absurda e trechos além do fim do arquivo viram um erro
-  explicado, antes de gravar qualquer coisa. Testado com milhares de imagens
-  corrompidas de propósito.
-- **Nada pela metade.** Ctrl+C ou qualquer falha apaga o que a operação
-  criou. Um arquivo incompleto nunca fica com o nome de pronto, e uma imagem
-  nova só ganha o nome final depois de gravada e relida.
+  árvore, profundidade absurda, tabelas compartilhadas e trechos além do fim
+  do arquivo viram um erro explicado, antes de gravar qualquer coisa. A
+  extração nunca grava através de um link simbólico (ou junção) que já
+  esteja no destino. Testado com milhares de imagens corrompidas de
+  propósito.
+- **Nada pela metade.** Ctrl+C, SIGTERM, fechar o terminal ou a janela do
+  console e qualquer falha apagam o que a operação criou. Um arquivo
+  incompleto nunca fica com o nome de pronto, e uma imagem nova só ganha o
+  nome final depois de gravada e relida.
+- **Erros que dizem o que houve:** qual arquivo, qual operação e a causa
+  (não existe, sem permissão, disco cheio...).
 - Espaço livre conferido antes de começar, em vez de falhar a 90%.
 - Protocolo `--progresso-json`, o mesmo do iso2god-pt, para outro programa
   (como o xiso-manager) mostrar a barra de progresso.
@@ -128,9 +133,9 @@ o padrão.
 | Código | Significado |
 |---|---|
 | 0 | tudo certo |
-| 1 | erro (imagem inválida, destino ocupado, sem espaço...) |
+| 1 | erro (imagem inválida, destino ocupado, sem espaço, opção desconhecida...) |
 | 2 | `verificar`: o Redump tem este jogo com outro SHA-1 (modificado, corrompido ou outra versão); com `--dat`, também quando a imagem não está no .dat |
-| 130 | cancelado (Ctrl+C) |
+| 130 | cancelado (Ctrl+C, SIGTERM, terminal ou janela fechados) |
 
 ### Modo máquina
 
