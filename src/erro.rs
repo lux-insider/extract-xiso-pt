@@ -96,12 +96,22 @@ pub trait Contexto<T> {
 }
 
 impl<T> Contexto<T> for io::Result<T> {
+    #[inline]
     fn ctx(self, operacao: Operacao, caminho: &Path) -> Resultado<T> {
-        self.map_err(|fonte| Erro::Arquivo {
-            operacao,
-            caminho: caminho.to_path_buf(),
-            fonte,
-        })
+        match self {
+            Ok(v) => Ok(v),
+            Err(fonte) => Err(erro_arquivo(operacao, caminho, fonte)),
+        }
+    }
+}
+
+/// Fora da parte genérica: uma cópia só, em vez de uma por tipo de `T`.
+#[inline(never)]
+fn erro_arquivo(operacao: Operacao, caminho: &Path, fonte: io::Error) -> Erro {
+    Erro::Arquivo {
+        operacao,
+        caminho: caminho.to_path_buf(),
+        fonte,
     }
 }
 
