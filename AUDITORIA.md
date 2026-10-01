@@ -10,7 +10,9 @@ o SHA-1 do que cada comando produz hoje (extrair, criar, reescrever,
 `--liberar-midia`, `listar --json` e o relatório do `verificar`, em XISO e
 XGD3, com nomes UTF-8 e Latin-1). Toda correção abaixo passa por esses
 testes sem alterar um único valor. Uma correção que mudaria esses bytes não
-foi aplicada: ficou só descrita (marcada **só descrito**).
+foi aplicada: ficou só descrita (marcada **só descrito**). A única exceção é
+o A-6, corrigido depois com autorização do mantenedor: ele muda de propósito
+três valores golden do `reescrever` com nome acentuado (ver o item).
 
 ## Gravidade
 
@@ -33,7 +35,7 @@ foi aplicada: ficou só descrita (marcada **só descrito**).
 | B-3 | Alta | `arvore.rs:96-185` | tabela compartilhada relida (até 16 MB) a cada visita: trava | corrigido em `92fdeba` |
 | S-4 | Alta | `progresso.rs:39,152`, `terminal.rs`, `main.rs` | stdout fechado vira pânico e aborto, sem limpeza | corrigido em `6d6b741` |
 | S-5 | Alta | `sistema.rs:72-114` | SIGHUP e fechar a janela no Windows matam sem limpar | corrigido em `050039a` |
-| A-6 | Alta | `criar.rs:176-187` | `reescrever` troca nomes UTF-8 acentuados por Latin-1 | **só descrito** |
+| A-6 | Alta | `criar.rs:176-187` | `reescrever` troca nomes UTF-8 acentuados por Latin-1 | corrigido em `0df4031` (autorizado; muda bytes do `reescrever`) |
 | B-4 | Média | `arvore.rs`, `criar.rs:69-155` | Ctrl+C/SIGTERM ignorados durante a leitura da árvore | corrigido em `4c51c7c` |
 | E-1 | Média | `erro.rs:9` e todo `?` em E/S | erro de E/S sem dizer arquivo nem operação | corrigido em `be00f0b` |
 | E-2 | Média | `main.rs:45-57` | `verificar --progresso-json` não emite o evento `erro` | corrigido em `7e5822b` |
@@ -294,7 +296,7 @@ extração no Windows, ou acrescentar à lista numa versão anunciada.
   validação de nomes iguais compara sem diferenciar maiúsculas, não por
   normalização. Fora do escopo (o programa não tem binário para macOS).
 
-### A-6 (Alta, só descrito) — `reescrever` troca nomes UTF-8 por Latin-1
+### A-6 (Alta, corrigido depois) — `reescrever` troca nomes UTF-8 por Latin-1
 
 `criar.rs:176-187`, `bytes_do_nome`. A leitura decodifica o nome como UTF-8
 se for válido, senão como Latin-1, e guarda só o texto. Para voltar aos
@@ -311,14 +313,34 @@ ASCII e não são afetados; traduções e imagens caseiras com acento são. O
 caso inverso também existe: um nome Latin-1 cujos bytes formam UTF-8 válido
 (`C3 A9`) volta como `E9`.
 
-*Por que não foi aplicado:* a correção muda os bytes que o `reescrever`
-grava hoje para uma entrada válida (o teste golden
-`criar_reescrever_e_extrair_pasta_de_jogo_identico` registra a saída atual,
-de propósito). *Correção proposta:* guardar em `Entrada` os bytes originais
-do nome (`#[serde(skip)] nome_bruto: Vec<u8>`) e copiá-los como estão em
-`de_imagem`, apagando `bytes_do_nome`. Depois de aplicada, os valores
-golden do `reescrever` com nome acentuado mudam e passam a ser iguais aos
-do `criar`.
+*Por que ficou de fora na primeira rodada:* a correção muda os bytes que o
+`reescrever` grava para uma entrada válida, e a regra era não mudar nenhum.
+
+*Correção (`0df4031`, aplicada depois, com autorização):* `Entrada` guarda
+também os bytes do nome lidos do disco (`#[serde(skip)] nome_bytes`, fora
+do JSON do `listar`), e `de_imagem` os copia como estão; `bytes_do_nome`
+saiu. Extração, validação de nomes e texto mostrado não mudam.
+
+Mudaram de propósito três valores golden, todos de `reescrever` com nome
+acentuado; os outros 10 (extração, `criar`, `listar --json`, `verificar`,
+`--liberar-midia`) continuam iguais:
+
+| Golden | Antes | Depois | Por quê |
+|---|---|---|---|
+| `reescrever (XISO)` | `441bf9dc…` | `ef1cd9ba…` | agora é o mesmo hash do `criar` da mesma pasta: a imagem reescrita é idêntica à criada |
+| `reescrever (XGD3)` | `1b19cdc9…` | `c94a0d5b…` | só o nó de `Ação.txt` muda: tamanho do nome 8 → 10, bytes `41 E7 E3 6F…` → `41 C3 A7 C3 A3 6F…` |
+| `reescrever -u (XGD3)` | `cabdeee0…` | `73cacfe6…` | o mesmo nó; o nome Latin-1 `Aé.bin` já saía igual |
+
+Testes (`a6_*` em `src/testes_auditoria.rs`), que leem os nomes direto das
+tabelas gravadas, sem passar pelo leitor do programa:
+
+- (a) nome UTF-8 com acento, numa pasta e num arquivo dentro dela: a
+  reescrita de uma imagem criada é idêntica a ela. Falhava antes.
+- (b) nomes Latin-1 que não são UTF-8 válido voltam com os mesmos bytes.
+  Passava também antes, porque a adivinhação antiga acertava esse caso;
+  fica como proteção contra regressão.
+- (c) nomes Latin-1 cujos bytes formam UTF-8 válido (`43 C3 A9`) voltam
+  iguais. Falhava antes (saíam como `43 E9`).
 
 ---
 
@@ -516,14 +538,11 @@ para a thread que o fez (`36839f0`); a suíte passou 5 vezes seguidas.
 
 ### Para decisão do mantenedor (não aplicado)
 
-1. **A-6 (Alta)** — `reescrever` troca nomes UTF-8 acentuados por Latin-1
-   dentro da imagem nova. É o único item grave que ficou sem correção,
-   porque corrigir muda os bytes gravados hoje. Para jogos com nomes ASCII
-   (todos os discos oficiais) nada muda; para traduções e imagens caseiras
-   com acento, a imagem reescrita pode não achar os arquivos no console.
-   Recomendo aplicar a correção proposta e atualizar o golden de propósito.
-2. **W-1** — nomes reservados do Windows que faltam na validação.
-3. **L-2** — trocar ou enxugar o `clap` (muda ajuda e mensagens de uso).
-4. **D-1** — opção `--sincronizar` (fsync por arquivo) para quem extrai em
+1. **W-1** — nomes reservados do Windows que faltam na validação.
+2. **L-2** — trocar ou enxugar o `clap` (muda ajuda e mensagens de uso).
+3. **D-1** — opção `--sincronizar` (fsync por arquivo) para quem extrai em
    disco externo e pode desconectar.
-5. **D-2, D-4, P-7** — descritos acima; baixo risco, sem pressa.
+4. **D-2, D-4, P-7** — descritos acima; baixo risco, sem pressa.
+
+O A-6, que abria esta lista, foi corrigido depois com autorização (ver o
+item): era o único achado grave sem correção.
