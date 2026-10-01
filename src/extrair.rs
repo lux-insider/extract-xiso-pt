@@ -5,7 +5,7 @@
 //! pronto (é gravado com um sufixo temporário e renomeado no fim); e, se a
 //! extração falhar ou for cancelada, tudo o que ela criou é apagado.
 
-use std::fs::{self, File};
+use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
@@ -14,10 +14,9 @@ use crate::erro::{Erro, Resultado};
 use crate::imagem::Imagem;
 use crate::progresso::Progresso;
 use crate::sistema;
+use crate::temporario;
 use crate::terminal::fmt_bytes;
 
-/// Sufixo dos arquivos ainda sendo gravados.
-const SUFIXO_PARCIAL: &str = ".extract-xiso-pt.parcial";
 const BLOCO: usize = 1024 * 1024;
 
 pub struct Opcoes {
@@ -135,7 +134,10 @@ fn extrair_nivel(
             // pasta do destino que é link (ou junção, no Windows) levaria a
             // extração para fora dele
             let existente = fs::symlink_metadata(&alvo).ok();
-            if existente.as_ref().is_some_and(|m| m.file_type().is_symlink()) {
+            if existente
+                .as_ref()
+                .is_some_and(|m| m.file_type().is_symlink())
+            {
                 return Err(Erro::Destino(format!(
                     "{} é um link simbólico; a extração não grava através de links, \
                      para não sair da pasta de destino",
@@ -161,11 +163,8 @@ fn extrair_arquivo(
     criados: &mut Criados,
     progresso: &Progresso,
 ) -> Resultado<()> {
-    let mut parcial = alvo.as_os_str().to_owned();
-    parcial.push(SUFIXO_PARCIAL);
-    let parcial = PathBuf::from(parcial);
-
-    let mut saida = File::create(&parcial)?;
+    let parcial = temporario::caminho_de(alvo);
+    let mut saida = temporario::criar(&parcial)?;
     criados.caminhos.push(parcial.clone());
 
     if e.tamanho > 0 {

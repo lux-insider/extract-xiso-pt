@@ -29,10 +29,10 @@ use crate::erro::{Erro, Resultado, imagem};
 use crate::imagem::{ASSINATURA, Imagem, SETOR};
 use crate::progresso::Progresso;
 use crate::sistema;
+use crate::temporario;
 use crate::terminal::fmt_bytes;
 
 const S: usize = SETOR as usize;
-const SUFIXO_PARCIAL: &str = ".extract-xiso-pt.parcial";
 /// A imagem termina num múltiplo disto, como as XISO feitas por outras
 /// ferramentas.
 const ALINHAMENTO_FIM: u64 = 64 * 1024;
@@ -596,9 +596,7 @@ pub fn gravar(
         )));
     }
 
-    let mut parcial = saida.as_os_str().to_owned();
-    parcial.push(SUFIXO_PARCIAL);
-    let parcial = PathBuf::from(parcial);
+    let parcial = temporario::caminho_de(saida);
     let r = gravar_em(
         &mut fonte,
         &prep.itens,
@@ -641,7 +639,7 @@ fn gravar_em(
     tamanho_imagem: u64,
     progresso: &Progresso,
 ) -> Resultado<()> {
-    let arquivo = File::create(caminho)?;
+    let arquivo = temporario::criar(caminho)?;
     let mut w = Escritor {
         saida: BufWriter::with_capacity(BLOCO, arquivo),
         posicao: 0,
