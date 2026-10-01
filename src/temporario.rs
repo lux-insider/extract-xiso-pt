@@ -49,6 +49,26 @@ pub fn criar(caminho: &Path) -> io::Result<File> {
         .open(caminho)
 }
 
+/// `a` e `b` são o mesmo arquivo no disco (mesmo que por caminhos, links ou
+/// maiúsculas diferentes)? `false` se algum dos dois não existe.
+pub fn mesmo_arquivo(a: &Path, b: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        match (fs::metadata(a), fs::metadata(b)) {
+            (Ok(x), Ok(y)) => x.dev() == y.dev() && x.ino() == y.ino(),
+            _ => false,
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        match (fs::canonicalize(a), fs::canonicalize(b)) {
+            (Ok(x), Ok(y)) => x == y,
+            _ => false,
+        }
+    }
+}
+
 #[cfg(test)]
 mod testes {
     use super::*;
