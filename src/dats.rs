@@ -10,7 +10,7 @@
 //! `dats instalar` grava no primeiro que já existir, ou cria o 3.
 
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use crate::arvore;
@@ -69,7 +69,13 @@ pub fn pasta() -> Option<PathBuf> {
 
 /// Lê um .dat, ou todos os .dat de dentro de um .zip.
 pub fn ler_arquivo(caminho: &Path) -> Resultado<Vec<(String, String)>> {
-    let bytes = fs::read(caminho)?;
+    // no máximo um byte além do limite: um /dev/zero, uma ISO passada por
+    // engano ou um link chamado x.dat na pasta dos .dat não vão inteiros
+    // para a memória
+    let mut bytes = Vec::new();
+    fs::File::open(caminho)?
+        .take(MAX_DAT as u64 + 1)
+        .read_to_end(&mut bytes)?;
     if bytes.len() > MAX_DAT {
         return Err(Erro::Destino(format!(
             "{} é grande demais para um .dat",
@@ -462,5 +468,22 @@ mod testes {
         let inicio = std::time::Instant::now();
         assert!(zip::ler(&bomba).is_err());
         assert!(inicio.elapsed().as_secs() < 5);
+    }
+
+    /// B-2: um arquivo maior que um .dat (ou sem fim) não é lido inteiro.
+    #[test]
+    fn b2_dat_grande_ou_sem_fim_nao_vai_para_a_memoria() {
+        let p = std::env::temp_dir().join(format!("extract-xiso-pt-b2-{}.dat", std::process::id()));
+        let f = fs::File::create(&p).unwrap();
+        f.set_len(8 * 1024 * 1024 * 1024).unwrap(); // 8 GiB esparsos
+        drop(f);
+        let r = ler_arquivo(&p);
+        fs::remove_file(&p).ok();
+        assert!(matches!(r, Err(Erro::Destino(_))));
+        #[cfg(unix)]
+        assert!(matches!(
+            ler_arquivo(Path::new("/dev/zero")),
+            Err(Erro::Destino(_))
+        ));
     }
 }
