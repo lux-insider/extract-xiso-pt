@@ -36,7 +36,7 @@ enum Evento<'a> {
 
 fn emitir(e: &Evento) {
     if let Ok(linha) = serde_json::to_string(e) {
-        println!("{linha}");
+        saida!("{linha}");
     }
 }
 
@@ -149,7 +149,7 @@ pub fn emitir_verificado<T: Serialize>(relatorio: &T) {
         evento: "verificado",
         relatorio,
     }) {
-        println!("{linha}");
+        saida!("{linha}");
     }
 }
 

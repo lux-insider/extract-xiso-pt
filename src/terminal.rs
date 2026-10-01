@@ -108,6 +108,19 @@ pub fn limpar_linha() -> String {
     }
 }
 
+/// Escreve na saída padrão (ou na de erros) e descarrega, ignorando falha
+/// de escrita: ver a macro `saida!`.
+pub fn escrever(erro: bool, texto: std::fmt::Arguments) {
+    use std::io::Write;
+    let _ = if erro {
+        let mut e = std::io::stderr().lock();
+        e.write_fmt(texto).and_then(|()| e.flush())
+    } else {
+        let mut s = std::io::stdout().lock();
+        s.write_fmt(texto).and_then(|()| s.flush())
+    };
+}
+
 /// Pasta pessoal do usuário: `HOME` no Unix, `USERPROFILE` no Windows.
 pub fn pasta_pessoal() -> Option<std::path::PathBuf> {
     ["HOME", "USERPROFILE"]
@@ -516,7 +529,7 @@ impl Tema {
     }
 
     pub fn marca_ok(&self, rotulo: &str, valor: &str) {
-        println!(
+        saida!(
             "  {} {}{}",
             self.c(&marca_larga(SIM_OK), &[&c::verde()]),
             self.c(&format!("{:<17}", rotulo), &[&c::cinza()]),
@@ -525,7 +538,7 @@ impl Tema {
     }
 
     pub fn marca_falha(&self, rotulo: &str, valor: &str) {
-        println!(
+        saida!(
             "  {} {}{}",
             self.c(&marca_larga(SIM_FALHA), &[&c::vermelho()]),
             self.c(&format!("{:<17}", rotulo), &[&c::cinza()]),
@@ -534,7 +547,7 @@ impl Tema {
     }
 
     pub fn marca_nd(&self, rotulo: &str, valor: &str) {
-        println!(
+        saida!(
             "  {} {}{}",
             self.c(&marca_larga(SIM_ND), &[&c::cinza()]),
             self.c(&format!("{:<17}", rotulo), &[&c::cinza()]),
@@ -793,7 +806,7 @@ impl Tema {
     }
 
     pub fn dica(&self, texto: &str) {
-        println!(
+        saida!(
             "{}  {}",
             self.c(emo::DICA(), &[]),
             self.c(texto, &[&c::ciano(), ITA])
@@ -801,7 +814,7 @@ impl Tema {
     }
 
     pub fn sucesso(&self, texto: &str) {
-        println!(
+        saida!(
             "{}  {}",
             self.c(emo::OK(), &[]),
             self.c(texto, &[&c::verde(), NEG])
@@ -814,7 +827,7 @@ impl Tema {
     /// com dado. (No modo `--json` o erro sai como evento no stdout, que é
     /// o protocolo — ver `crate::progresso`.)
     pub fn erro(&self, texto: &str) {
-        eprintln!(
+        saida_erro!(
             "{} {}",
             self.c(emo::ERRO(), &[]),
             self.c(texto, &[&c::vermelho(), NEG])
@@ -822,7 +835,7 @@ impl Tema {
     }
 
     pub fn aviso(&self, texto: &str) {
-        eprintln!(
+        saida_erro!(
             "{}  {}",
             self.c(emo::AVISO(), &[]),
             self.c(texto, &[&c::amarelo()])
@@ -830,7 +843,7 @@ impl Tema {
     }
 
     pub fn info_linha(&self, emoji: &str, texto: &str) {
-        println!("{emoji}  {}", self.c(texto, &[&c::branco()]));
+        saida!("{emoji}  {}", self.c(texto, &[&c::branco()]));
     }
 
     pub fn prompt(&self, texto: &str) -> String {
@@ -1051,9 +1064,7 @@ impl BarraProgresso {
             }
         }
 
-        print!("{}{linha}", limpar_linha());
-        use std::io::Write;
-        let _ = std::io::stdout().flush();
+        escrever(false, format_args!("{}{linha}", limpar_linha()));
         self.quadro.fetch_add(1, Ordering::Relaxed);
     }
 
@@ -1061,7 +1072,7 @@ impl BarraProgresso {
     /// linha só (também é tudo que aparece quando não há TTY).
     pub fn finalizar(&self, feito: u64, sucesso: bool) {
         if self.interativo {
-            print!("{}", limpar_linha());
+            escrever(false, format_args!("{}", limpar_linha()));
         }
         let decorrido = self.inicio.elapsed().as_secs_f64().max(0.001);
         let vel = feito as f64 / decorrido;
@@ -1070,7 +1081,7 @@ impl BarraProgresso {
         } else {
             self.tema.c(emo::ERRO(), &[])
         };
-        println!(
+        saida!(
             "  {} {}: {} em {} ({})",
             marca,
             self.rotulo,
