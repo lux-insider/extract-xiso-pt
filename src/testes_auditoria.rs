@@ -80,3 +80,42 @@ fn s2_parcial_que_e_link_nao_sobrescreve_o_alvo() {
     assert_eq!(fs::read(&alvo).unwrap(), b"importante");
     assert!(fs::symlink_metadata(&saida).unwrap().is_file());
 }
+
+/// Imagem em que cada nível tem dois diretórios apontando para a mesma
+/// tabela seguinte, cada uma declarando 16 MB: sem limite, as visitas
+/// dobram a cada nível e cada uma relê 16 MB.
+fn imagem_de_tabelas_compartilhadas(niveis: u32) -> crate::testes::Construtor {
+    use crate::testes::{Construtor, no};
+    const S: usize = 2048;
+    const TAM: u32 = 16 * 1024 * 1024;
+    let mut c = Construtor::novo(33 + niveis as usize + 1 + TAM as usize / S);
+    c.raiz(33, S as u32);
+    for i in 0..niveis {
+        let mut t = vec![0xFFu8; S];
+        let a = no(0, 4, 34 + i, TAM, crate::arvore::ATTR_DIRETORIO, b"a");
+        let b = no(0, 0, 34 + i, TAM, crate::arvore::ATTR_DIRETORIO, b"b");
+        t[..a.len()].copy_from_slice(&a);
+        t[16..16 + b.len()].copy_from_slice(&b);
+        c.por(33 + i, &t);
+    }
+    c.por(33 + niveis, &[0xFF; S]); // diretório vazio no fundo
+    c
+}
+
+/// B-3: a imagem de 16 MB que travava o `info` por tempo indeterminado
+/// agora é recusada em segundos, com erro explicado.
+#[test]
+fn b3_tabelas_compartilhadas_nao_travam_a_leitura() {
+    let t = Temp::nova();
+    let iso = imagem_de_tabelas_compartilhadas(40).gravar(&t.0);
+    let inicio = std::time::Instant::now();
+    let r = crate::testes::ler(&iso);
+    assert!(matches!(r, Err(Erro::Imagem(_))), "{r:?}");
+    assert!(inicio.elapsed().as_secs() < 30, "{:?}", inicio.elapsed());
+
+    // poucos níveis: as mesmas tabelas visitadas algumas vezes continuam
+    // valendo (a árvore lida é a mesma de antes)
+    let iso = imagem_de_tabelas_compartilhadas(3).gravar(&t.0);
+    let raiz = crate::testes::ler(&iso).unwrap();
+    assert_eq!(crate::arvore::totais(&raiz).diretorios, 2 + 4 + 8);
+}

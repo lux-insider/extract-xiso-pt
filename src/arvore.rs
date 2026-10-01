@@ -16,6 +16,16 @@ pub const PROFUNDIDADE_MAXIMA: usize = 64;
 const MAX_ENTRADAS: usize = 1_000_000;
 /// Uma tabela de diretório real tem poucos KB; 16 MB já é absurdo.
 const MAX_TABELA: u32 = 16 * 1024 * 1024;
+/// Quanto de uma tabela os ponteiros alcançam: um filho fica a no máximo
+/// `0xFFFF` palavras de 4 bytes do início, e o nó dele tem 14 bytes de
+/// cabeçalho e até 255 de nome. O resto da tabela declarada nunca é lido
+/// pela árvore, então não precisa sair do disco.
+const ALCANCAVEL: usize = 0xFFFF * 4 + 14 + 255;
+/// Teto de bytes de tabela lidos na imagem inteira. Um disco real lê poucos
+/// MB; isto só para imagens em que vários diretórios apontam para as mesmas
+/// tabelas, que de outro jeito seriam relidas a cada visita, com o número
+/// de visitas dobrando a cada nível.
+const MAX_LIDO_TABELAS: u64 = 1024 * 1024 * 1024;
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Entrada {
@@ -80,6 +90,7 @@ pub fn ler(img: &mut Imagem) -> Resultado<Vec<Entrada>> {
     let mut leitor = Leitor {
         ancestrais: HashSet::new(),
         contagem: 0,
+        lido: 0,
     };
     let (setor, tamanho) = (img.setor_raiz, img.tamanho_raiz);
     leitor.diretorio(img, setor, tamanho, "", 0)
@@ -90,6 +101,8 @@ struct Leitor {
     /// ancestral faria a leitura girar para sempre).
     ancestrais: HashSet<u32>,
     contagem: usize,
+    /// Bytes de tabela lidos até agora (ver `MAX_LIDO_TABELAS`).
+    lido: u64,
 }
 
 impl Leitor {
@@ -130,7 +143,18 @@ impl Leitor {
                  a imagem está corrompida"
             )));
         }
-        let tabela = img.ler(setor, tamanho as usize, &da_tabela)?;
+        // a tabela declarada inteira tem que estar dentro da imagem; dela,
+        // só o trecho que os ponteiros alcançam é lido
+        img.conferir_trecho(setor, tamanho as u64, &da_tabela)?;
+        let alcancavel = (tamanho as usize).min(ALCANCAVEL);
+        self.lido += alcancavel as u64;
+        if self.lido > MAX_LIDO_TABELAS {
+            return Err(imagem(
+                "as tabelas de diretório somam mais de 1 GiB lido (diretórios apontando para \
+                 as mesmas tabelas): a imagem está corrompida",
+            ));
+        }
+        let tabela = img.ler(setor, alcancavel, &da_tabela)?;
 
         // Em ordem (esquerda, nó, direita): a árvore é ordenada pelo nome.
         let mut nos = Vec::new();
