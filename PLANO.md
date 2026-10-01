@@ -60,12 +60,16 @@ o `extract-xiso` grava assim, e o `criar` também.
 3. **Nada fora do destino.** Nome vazio, `.`, `..`, com `/`, `\`, `:` ou
    caractere de controle é recusado **antes** de criar qualquer arquivo. Dois
    nomes que só diferem em maiúsculas no mesmo diretório também, porque no
-   Windows seriam o mesmo arquivo.
+   Windows seriam o mesmo arquivo. A extração não desce por um link
+   simbólico (ou junção) que já esteja no destino, e o temporário é criado
+   de forma exclusiva, sem seguir link.
 4. **Tamanhos conferidos antes de alocar.** Tabela ou arquivo que passa do
-   fim da imagem é erro, não alocação de gigabytes.
-5. **Sem meio-termo no disco.** Ctrl+C ou falha no meio apaga o que a
-   extração criou; um arquivo pela metade nunca fica com o nome de pronto
-   (grava em `nome.parcial` e renomeia no fim).
+   fim da imagem é erro, não alocação de gigabytes. De uma tabela só se lê o
+   que os ponteiros alcançam, e a imagem inteira tem teto de tabelas lidas.
+5. **Sem meio-termo no disco.** Ctrl+C, SIGTERM, SIGHUP, fechar a janela
+   do console ou falha no meio apaga o que a extração criou; um arquivo pela
+   metade nunca fica com o nome de pronto (grava em `nome.parcial` e
+   renomeia no fim).
 6. **Nunca altera o jogo sem pedir.** O patch de mídia do XBE só com opção
    explícita.
 
