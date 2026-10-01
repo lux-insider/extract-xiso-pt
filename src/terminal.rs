@@ -108,6 +108,33 @@ pub fn limpar_linha() -> String {
     }
 }
 
+/// Texto vindo de fora (nomes de dentro de uma imagem) pronto para o
+/// terminal. Caracteres de controle (inclusive os C1, como U+009B, que
+/// alguns terminais tratam como o início de uma sequência de escape) e os
+/// de direção do texto (bidi, que podem disfarçar um nome) viram `\u{..}`.
+/// Só para exibir: arquivos gravados e JSON usam o nome como ele é.
+pub fn exibivel(texto: &str) -> std::borrow::Cow<'_, str> {
+    fn perigoso(c: char) -> bool {
+        c.is_control()
+            || matches!(
+                c,
+                '\u{061C}' | '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}'
+            )
+    }
+    if !texto.chars().any(perigoso) {
+        return std::borrow::Cow::Borrowed(texto);
+    }
+    let mut s = String::with_capacity(texto.len() + 8);
+    for c in texto.chars() {
+        if perigoso(c) {
+            s.extend(c.escape_unicode());
+        } else {
+            s.push(c);
+        }
+    }
+    std::borrow::Cow::Owned(s)
+}
+
 /// Escreve na saída padrão (ou na de erros) e descarrega, ignorando falha
 /// de escrita: ver a macro `saida!`.
 pub fn escrever(erro: bool, texto: std::fmt::Arguments) {
@@ -830,7 +857,7 @@ impl Tema {
         saida_erro!(
             "{} {}",
             self.c(emo::ERRO(), &[]),
-            self.c(texto, &[&c::vermelho(), NEG])
+            self.c(&exibivel(texto), &[&c::vermelho(), NEG])
         );
     }
 
@@ -838,7 +865,7 @@ impl Tema {
         saida_erro!(
             "{}  {}",
             self.c(emo::AVISO(), &[]),
-            self.c(texto, &[&c::amarelo()])
+            self.c(&exibivel(texto), &[&c::amarelo()])
         );
     }
 
@@ -1026,7 +1053,7 @@ impl BarraProgresso {
         let det_txt = if detalhe.is_empty() {
             String::new()
         } else {
-            format!("  {}", cortar(detalhe, 18))
+            format!("  {}", cortar(&exibivel(detalhe), 18))
         };
 
         let mut extras = Vec::new();
@@ -1089,5 +1116,21 @@ impl BarraProgresso {
             fmt_tempo(decorrido),
             fmt_velocidade(vel)
         );
+    }
+}
+
+#[cfg(test)]
+mod testes {
+    use super::exibivel;
+
+    #[test]
+    fn t1_controles_e_bidi_viram_escape_so_na_exibicao() {
+        assert!(matches!(
+            exibivel("Ação/default.xex"),
+            std::borrow::Cow::Borrowed(_)
+        ));
+        assert_eq!(exibivel("a\u{9b}31mb"), "a\\u{9b}31mb");
+        assert_eq!(exibivel("x\u{1b}[2J"), "x\\u{1b}[2J");
+        assert_eq!(exibivel("gpj.\u{202E}exe"), "gpj.\\u{202e}exe");
     }
 }

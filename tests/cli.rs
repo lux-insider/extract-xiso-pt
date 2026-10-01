@@ -253,3 +253,42 @@ fn e3_erro_de_uso_nao_se_confunde_com_nao_confere() {
     assert_eq!(rodar(&["--version".as_ref()]).status.code(), Some(0));
     assert_eq!(rodar(&["--help".as_ref()]).status.code(), Some(0));
 }
+
+/// T-1: um nome da imagem com controle C1 (U+009B, que alguns terminais
+/// tratam como início de sequência de escape) não chega cru ao terminal no
+/// `listar`; no `listar --json` e na extração, o nome é o de verdade.
+#[cfg(unix)]
+#[test]
+fn t1_nome_com_controle_c1_nao_vai_cru_ao_terminal() {
+    let t = Temp::nova("t1");
+    let jogo = t.0.join("jogo");
+    fs::create_dir_all(&jogo).unwrap();
+    fs::write(jogo.join("default.xex"), b"XEX2").unwrap();
+    let nome = "a\u{9b}2Jb.txt";
+    fs::write(jogo.join(nome), b"oi").unwrap();
+    let iso = t.0.join("jogo.iso");
+    let o = rodar(&[
+        "criar".as_ref(),
+        jogo.as_os_str(),
+        "-s".as_ref(),
+        iso.as_os_str(),
+    ]);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+
+    let o = rodar(&["listar".as_ref(), iso.as_os_str()]);
+    let out = String::from_utf8(o.stdout).unwrap();
+    assert!(!out.contains('\u{9b}'), "{out:?}");
+    assert!(out.contains("a\\u{9b}2Jb.txt"), "{out:?}");
+
+    let o = rodar(&["listar".as_ref(), iso.as_os_str(), "--json".as_ref()]);
+    assert!(String::from_utf8(o.stdout).unwrap().contains(nome));
+    let d = t.0.join("saida");
+    let o = rodar(&[
+        "extrair".as_ref(),
+        iso.as_os_str(),
+        "-d".as_ref(),
+        d.as_os_str(),
+    ]);
+    assert!(o.status.success());
+    assert_eq!(fs::read(d.join(nome)).unwrap(), b"oi");
+}

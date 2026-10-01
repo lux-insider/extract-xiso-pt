@@ -344,6 +344,7 @@ fn listar(caminho: &Path, json: bool) -> Resultado<()> {
     }
     let tema = Tema::detectar();
     arvore::percorrer(&raiz, &mut |e, caminho| {
+        let caminho = terminal::exibivel(caminho);
         if e.eh_diretorio() {
             saida!(
                 "{}",
