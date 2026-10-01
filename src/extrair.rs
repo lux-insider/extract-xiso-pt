@@ -93,8 +93,15 @@ pub fn extrair(
 
     let mut criados = Criados::default();
     if !existia {
+        // todas as pastas que vão ser criadas (`-d a/b/c` sem `a`), da mais
+        // de fora para a de dentro: o desfazer apaga as que ficarem vazias
+        let novas: Vec<PathBuf> = destino
+            .ancestors()
+            .take_while(|p| !p.as_os_str().is_empty() && fs::symlink_metadata(p).is_err())
+            .map(Path::to_path_buf)
+            .collect();
         fs::create_dir_all(destino).ctx(Operacao::CriarPasta, destino)?;
-        criados.caminhos.push(destino.to_path_buf());
+        criados.caminhos.extend(novas.into_iter().rev());
     }
 
     let resultado = extrair_tudo(img, entradas, destino, &mut criados, progresso);
