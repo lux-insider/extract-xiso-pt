@@ -25,32 +25,33 @@ foi aplicada: ficou só descrita (marcada **só descrito**).
 
 | # | Gravidade | Onde | Problema | Decisão |
 |---|---|---|---|---|
-| S-1 | Crítica | `extrair.rs:132-138` | link simbólico no destino (`--sobrescrever`) faz gravar fora dele | corrigir |
-| S-2 | Crítica | `extrair.rs:153-157`, `criar.rs:599-602, 644` | `.parcial` que é link: sobrescreve o arquivo apontado | corrigir |
-| S-3 | Crítica | `dats.rs:178-183` | `dats instalar` apaga arquivo fora da pasta dos .dat | corrigir |
-| B-1 | Alta | `dats.rs:209-265` | .zip sem limite de total descompactado (3,4 MB → 3,8 TiB) | corrigir |
-| B-2 | Alta | `dats.rs:68` | `.dat` lido inteiro antes de conferir o tamanho (`/dev/zero`, ISO) | corrigir |
-| B-3 | Alta | `arvore.rs:96-185` | tabela compartilhada relida (até 16 MB) a cada visita: trava | corrigir |
-| S-4 | Alta | `progresso.rs:39,152`, `terminal.rs`, `main.rs` | stdout fechado vira pânico e aborto, sem limpeza | corrigir |
-| S-5 | Alta | `sistema.rs:72-114` | SIGHUP e fechar a janela no Windows matam sem limpar | corrigir |
+| S-1 | Crítica | `extrair.rs:132-138` | link simbólico no destino (`--sobrescrever`) faz gravar fora dele | corrigido em `847103f` |
+| S-2 | Crítica | `extrair.rs:153-157`, `criar.rs:599-602, 644` | `.parcial` que é link: sobrescreve o arquivo apontado | corrigido em `d6a8cd1` |
+| S-3 | Crítica | `dats.rs:178-183` | `dats instalar` apaga arquivo fora da pasta dos .dat | corrigido em `dbebc4c` |
+| B-1 | Alta | `dats.rs:209-265` | .zip sem limite de total descompactado (3,4 MB → 3,8 TiB) | corrigido em `1429d3e` |
+| B-2 | Alta | `dats.rs:68` | `.dat` lido inteiro antes de conferir o tamanho (`/dev/zero`, ISO) | corrigido em `32b0afe` |
+| B-3 | Alta | `arvore.rs:96-185` | tabela compartilhada relida (até 16 MB) a cada visita: trava | corrigido em `92fdeba` |
+| S-4 | Alta | `progresso.rs:39,152`, `terminal.rs`, `main.rs` | stdout fechado vira pânico e aborto, sem limpeza | corrigido em `6d6b741` |
+| S-5 | Alta | `sistema.rs:72-114` | SIGHUP e fechar a janela no Windows matam sem limpar | corrigido em `050039a` |
 | A-6 | Alta | `criar.rs:176-187` | `reescrever` troca nomes UTF-8 acentuados por Latin-1 | **só descrito** |
-| B-4 | Média | `arvore.rs`, `criar.rs:69-155` | Ctrl+C/SIGTERM ignorados durante a leitura da árvore | corrigir |
-| E-1 | Média | `erro.rs:9` e todo `?` em E/S | erro de E/S sem dizer arquivo nem operação | corrigir |
-| E-2 | Média | `main.rs:45-57` | `verificar --progresso-json` não emite o evento `erro` | corrigir |
-| E-3 | Média | `main.rs:44` | pânico sai em inglês; erro de uso sai com código 2 (= "não confere") | corrigir |
-| S-6 | Média | `extrair.rs:108-118, 177-181` | falha com `--sobrescrever` apaga o arquivo que substituiu o do usuário | corrigir |
-| P-1 | Média | `Cargo.toml` | `opt-level = "z"` deixa o SHA-1 por software 45% mais lento | corrigir |
-| P-6 | Média | `extrair.rs:121-144` | extração lê na ordem alfabética, não na do disco | corrigir |
-| S-7 | Baixa | `extrair.rs:153-181` | nome temporário pode colidir com outro arquivo da imagem | corrigir |
-| S-8 | Baixa | `criar.rs:599-602` | temporário da saída igual à imagem de origem a destrói | corrigir |
-| V-1 | Baixa | `verificar.rs:104-116` | sobreposição só detectada entre trechos vizinhos | corrigir |
-| V-2 | Baixa | `verificar.rs:160-188` | leitura dos hashes sem limite se o arquivo trocar no meio | corrigir |
-| T-1 | Baixa | `main.rs:270-282`, `terminal.rs:1016` | nomes da imagem com controles C1/bidi vão crus ao terminal | corrigir |
-| P-2 | Baixa | `verificar.rs:166` | 4 MB zerados alocados por bloco lido | corrigir |
-| P-3 | Baixa | `extrair.rs:163` | buffer de até 1 MB zerado por arquivo extraído | corrigir |
-| P-4 | Baixa | `arvore.rs:133` | lê a tabela declarada inteira; só 262.409 bytes são alcançáveis | corrigir (com B-3) |
-| P-5 | Baixa | `main.rs:266, 270-282` | `listar` faz uma escrita por linha e monta o JSON inteiro na memória | corrigir |
-| L-1 | Baixa | `Cargo.toml`, `terminal.rs:302-306` | `terminal_size` puxa `rustix`, `linux-raw-sys`, `bitflags` | corrigir |
+| B-4 | Média | `arvore.rs`, `criar.rs:69-155` | Ctrl+C/SIGTERM ignorados durante a leitura da árvore | corrigido em `4c51c7c` |
+| E-1 | Média | `erro.rs:9` e todo `?` em E/S | erro de E/S sem dizer arquivo nem operação | corrigido em `be00f0b` |
+| E-2 | Média | `main.rs:45-57` | `verificar --progresso-json` não emite o evento `erro` | corrigido em `7e5822b` |
+| E-3 | Média | `main.rs:44` | pânico sai em inglês; erro de uso sai com código 2 (= "não confere") | corrigido em `7e5822b` |
+| S-6 | Média | `extrair.rs:108-118, 177-181` | falha com `--sobrescrever` apaga o arquivo que substituiu o do usuário | corrigido em `33ec972` |
+| P-1 | Média | `Cargo.toml` | `opt-level = "z"` deixa o SHA-1 por software 45% mais lento | corrigido em `a3ffd16` |
+| P-6 | Média | `extrair.rs:121-144` | extração lê na ordem alfabética, não na do disco | corrigido em `ede49db` |
+| S-7 | Baixa | `extrair.rs:153-181` | nome temporário pode colidir com outro arquivo da imagem | corrigido em `ede49db` |
+| S-8 | Baixa | `criar.rs:599-602` | temporário da saída igual à imagem de origem a destrói | corrigido em `a8d7a98` |
+| S-9 | Baixa | `extrair.rs:91-93` | `-d a/b/c` sem `a`: falha deixa `a` e `a/b` vazias | corrigido em `1ddfb31` |
+| V-1 | Baixa | `verificar.rs:104-116` | sobreposição só detectada entre trechos vizinhos | corrigido em `5c35a25` |
+| V-2 | Baixa | `verificar.rs:160-188` | leitura dos hashes sem limite se o arquivo trocar no meio | corrigido em `7e03bc2` |
+| T-1 | Baixa | `main.rs:270-282`, `terminal.rs:1016` | nomes da imagem com controles C1/bidi vão crus ao terminal | corrigido em `0b34022` |
+| P-2 | Baixa | `verificar.rs:166` | 4 MB zerados alocados por bloco lido | corrigido em `2f98475` |
+| P-3 | Baixa | `extrair.rs:163` | buffer de até 1 MB zerado por arquivo extraído | corrigido em `ede49db` |
+| P-4 | Baixa | `arvore.rs:133` | lê a tabela declarada inteira; só 262.409 bytes são alcançáveis | corrigido em `92fdeba` |
+| P-5 | Baixa | `main.rs:266, 270-282` | `listar` faz uma escrita por linha e monta o JSON inteiro na memória | corrigido em `f0f5233` (texto); JSON ver nota |
+| L-1 | Baixa | `Cargo.toml`, `terminal.rs:302-306` | `terminal_size` puxa `rustix`, `linux-raw-sys`, `bitflags` | corrigido em `c24b935` |
 | W-1 | Baixa | `arvore.rs:277-303` | nomes reservados do Windows incompletos | **só descrito** |
 | D-1 | Baixa | `extrair.rs:175-177` | sem `fsync` antes do `rename` | **só descrito** |
 | D-2 | Baixa | `criar.rs:564`, `extrair.rs:177` | conferência de "já existe" e `rename` não são atômicos | **só descrito** |
@@ -59,9 +60,10 @@ foi aplicada: ficou só descrita (marcada **só descrito**).
 | P-7 | Baixa | `criar.rs:684-749` | `reescrever` lê a origem fora da ordem do disco | **só descrito** |
 | L-2 | Baixa | `Cargo.toml` | `clap` é a maior dependência | **só descrito** |
 
-Os itens "corrigir" estão detalhados abaixo com o cenário, a correção e o
-teste. A seção [Resultado](#resultado-da-fase-2) no fim diz em que commit
-cada um entrou.
+Os itens estão detalhados abaixo com o cenário, a correção e o teste. A
+seção [Resultado](#resultado-da-fase-2) no fim resume as medições, os
+testes e o que fica para decisão do mantenedor. O S-9 foi encontrado
+durante a fase 2, na revisão do próprio diff.
 
 ---
 
@@ -253,6 +255,13 @@ a ordem do disco de P-6), o temporário de `x` trunca o arquivo já pronto e
 ele some do resultado. *Correção:* se o caminho do temporário for um
 arquivo que esta extração já gravou, usa-se outro nome (`.1.parcial`, ...).
 
+### S-9 (Baixa) — pastas-pai criadas pelo `-d` ficavam após uma falha
+
+`extrair.rs:91-93`: com `-d a/b/c` e `a` inexistente, `create_dir_all`
+criava `a`, `a/b` e `a/b/c`, mas só `a/b/c` entrava na lista do desfazer.
+Um Ctrl+C ou uma falha deixava `a` e `a/b` vazias. *Correção:* todas as
+pastas criadas entram na lista (o desfazer só apaga pasta vazia).
+
 ### S-8 (Baixa) — temporário da saída igual à imagem de origem
 
 `reescrever a.iso.extract-xiso-pt.parcial -s a.iso` grava o temporário em
@@ -398,8 +407,11 @@ risco.
 - **P-4** `arvore.rs:133` lê a tabela declarada inteira (até 16 MB) — ver B-3.
 - **P-5** `main.rs:270-282` imprime cada linha do `listar` com `println!`
   (uma escrita no terminal por linha) e `main.rs:266` monta o JSON inteiro
-  numa `String` antes de imprimir. *Correção:* `BufWriter` e
-  `serde_json::to_writer`, com a mesma saída byte a byte.
+  numa `String` antes de imprimir. *Correção:* `BufWriter`, com a mesma
+  saída byte a byte. O JSON chegou a sair com `serde_json::to_writer`, mas
+  isso criava uma segunda cópia do serializador no binário (7 KB); ficou o
+  `to_vec` da 0.2.2, que tem teto (um milhão de entradas). Ver
+  [Medições](#medições).
 
 Clones e `String`s: o resto é pequeno perto da E/S (um `format!` de caminho
 por entrada, `jogo.clone()` por rom no .dat). Mexer neles não muda o tempo
@@ -450,4 +462,68 @@ Dependências diretas: `clap`, `serde`/`serde_json`, `thiserror`,
 
 ## Resultado da fase 2
 
-Preenchido depois das correções.
+Um commit por correção, da gravidade mais alta para a mais baixa, cada
+uma com o teste do cenário. Os
+testes de correção foram conferidos nos dois sentidos: falham no código de
+antes (os de travamento foram mortos por tempo: B-3 passou de 45 s, V-2 de
+60 s) e passam no de depois.
+
+### A regra principal
+
+Os 13 valores de `src/testes_saida.rs`, gravados com a 0.2.2 antes de
+qualquer correção, continuam idênticos depois de todas elas, em
+`cargo test` e em `cargo test --release` (o perfil que vai para o usuário,
+com o P-1). A listagem em texto e em JSON do `listar` também foi comparada
+com o binário 0.2.2 numa imagem de 60 mil arquivos: mesmo SHA-1.
+
+### Testes e clippy
+
+| | Antes | Depois |
+|---|---|---|
+| Testes de unidade | 32 | 58 |
+| Testes do programa (`tests/cli.rs`) | 0 | 6 |
+| `cargo clippy --all-targets` (Linux) | sem avisos | sem avisos |
+| `cargo clippy --all-targets --target x86_64-pc-windows-msvc` | sem avisos | sem avisos |
+
+O alvo Windows foi compilado e passou no clippy, mas não foi executado
+(não há Windows nem Wine neste ambiente). Ficam sem execução real: o
+tratador de `CTRL_CLOSE_EVENT` (S-5), a largura do console por
+`GetConsoleScreenBufferInfo` (L-1) e `mesmo_arquivo` por caminho canônico
+(S-8). Vale um teste manual no Windows antes do próximo release: fechar a
+janela no meio de um `extrair` e conferir que a pasta some.
+
+Um efeito colateral do B-4 apareceu na suíte: o pedido de cancelamento é
+global, e um teste que o marcava fazia outro, rodando em paralelo, receber
+`Cancelado` de vez em quando. Nos testes, o pedido simulado agora vale só
+para a thread que o fez (`36839f0`); a suíte passou 5 vezes seguidas.
+
+### Medições
+
+- **P-1:** `verificar` de 1 GiB com SHA-1 por software: 2,9-3,2 s → 2,0 s.
+  Com SHA-NI, igual (o gargalo é o MD5).
+- **P-5:** `listar` de 60 mil arquivos num pipe: 60.023 → 208 chamadas
+  `write`, cerca de 40% mais rápido.
+- **P-2:** sem diferença no Linux (o glibc já reaproveitava a memória); o
+  ganho esperado é no Windows, onde não pôde ser medido.
+- **P-6:** sem diferença num SSD com a imagem no cache, como esperado; o
+  ganho é num HD ou DVD, onde não pôde ser medido.
+- **Binário** (Linux x86_64, release): 863.272 → 885.976 bytes (+2,6%).
+  Medido commit a commit, as mensagens de erro estruturadas (E-1) são a
+  maior parte. Dois ajustes recuperaram 4,8 KB (`85463d8`); por isso o
+  `listar --json` continua montando o texto do JSON na memória, como na
+  0.2.2 (o `to_writer` custaria 7 KB, e a árvore tem teto de um milhão de
+  entradas). O L-1 tirou cinco pacotes da compilação.
+
+### Para decisão do mantenedor (não aplicado)
+
+1. **A-6 (Alta)** — `reescrever` troca nomes UTF-8 acentuados por Latin-1
+   dentro da imagem nova. É o único item grave que ficou sem correção,
+   porque corrigir muda os bytes gravados hoje. Para jogos com nomes ASCII
+   (todos os discos oficiais) nada muda; para traduções e imagens caseiras
+   com acento, a imagem reescrita pode não achar os arquivos no console.
+   Recomendo aplicar a correção proposta e atualizar o golden de propósito.
+2. **W-1** — nomes reservados do Windows que faltam na validação.
+3. **L-2** — trocar ou enxugar o `clap` (muda ajuda e mensagens de uso).
+4. **D-1** — opção `--sincronizar` (fsync por arquivo) para quem extrai em
+   disco externo e pode desconectar.
+5. **D-2, D-4, P-7** — descritos acima; baixo risco, sem pressa.
