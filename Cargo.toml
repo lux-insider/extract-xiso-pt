@@ -38,3 +38,18 @@ codegen-units = 1
 panic = "abort"
 strip = true
 
+# Os hashes do `verificar` são o único trecho pesado de CPU: otimizados para
+# velocidade. Numa CPU sem SHA-NI, o SHA-1 compilado para tamanho deixava o
+# `verificar` 45% mais lento (2,95 s contra 2,03 s por GiB), e isto não
+# aumenta o binário. Com SHA-NI o gargalo é o MD5 e nada muda.
+[profile.release.package.md-5]
+opt-level = 3
+[profile.release.package.sha1]
+opt-level = 3
+[profile.release.package.crc32fast]
+opt-level = 3
+[profile.release.package.digest]
+opt-level = 3
+[profile.release.package.block-buffer]
+opt-level = 3
+
