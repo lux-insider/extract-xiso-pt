@@ -338,25 +338,17 @@ fn info(caminho: &Path, json: bool) -> Resultado<()> {
 fn listar(caminho: &Path, json: bool) -> Resultado<()> {
     let mut img = Imagem::abrir(caminho)?;
     let raiz = arvore::ler(&mut img)?;
+    let tema = Tema::detectar();
+    {
+        // uma escrita por bloco, não uma por linha; se quem lê fechar a
+        // saída (`listar | head`), para em silêncio
+        use std::io::Write;
+        let mut s = std::io::BufWriter::new(std::io::stdout().lock());
+        let _ = escrever_lista(&mut s, &raiz, json, &tema).and_then(|()| s.flush());
+    }
     if json {
-        saida!("{}", serde_json::to_string(&raiz).unwrap_or_default());
         return Ok(());
     }
-    let tema = Tema::detectar();
-    arvore::percorrer(&raiz, &mut |e, caminho| {
-        let caminho = terminal::exibivel(caminho);
-        if e.eh_diretorio() {
-            saida!(
-                "{}",
-                tema.c(&format!("{caminho}/"), &[&terminal::c::azul()])
-            );
-        } else {
-            saida!(
-                "{caminho}  {}",
-                tema.c(&fmt_bytes(e.tamanho as u64), &[&terminal::c::cinza()])
-            );
-        }
-    });
     let t = arvore::totais(&raiz);
     saida!();
     tema.info_linha(
@@ -369,6 +361,41 @@ fn listar(caminho: &Path, json: bool) -> Resultado<()> {
         ),
     );
     Ok(())
+}
+
+/// A listagem do `listar`: a árvore em JSON numa linha, ou um caminho por
+/// linha com o tamanho dos arquivos.
+fn escrever_lista(
+    s: &mut impl std::io::Write,
+    raiz: &[arvore::Entrada],
+    json: bool,
+    tema: &Tema,
+) -> std::io::Result<()> {
+    if json {
+        serde_json::to_writer(&mut *s, raiz)?;
+        return writeln!(s);
+    }
+    let mut r = Ok(());
+    arvore::percorrer(raiz, &mut |e, caminho| {
+        if r.is_err() {
+            return;
+        }
+        let caminho = terminal::exibivel(caminho);
+        r = if e.eh_diretorio() {
+            writeln!(
+                s,
+                "{}",
+                tema.c(&format!("{caminho}/"), &[&terminal::c::azul()])
+            )
+        } else {
+            writeln!(
+                s,
+                "{caminho}  {}",
+                tema.c(&fmt_bytes(e.tamanho as u64), &[&terminal::c::cinza()])
+            )
+        };
+    });
+    r
 }
 
 fn extrair_cmd(
@@ -808,6 +835,41 @@ fn titulo_app() -> String {
 
 #[cfg(test)]
 mod testes_main {
+    use super::*;
+
+    /// P-5: a listagem com escrita em bloco é a mesma, byte a byte, da que
+    /// a versão 0.2.2 imprimia linha a linha.
+    #[test]
+    fn p5_listagem_igual_a_anterior() {
+        let t = crate::testes::Temp::nova();
+        let iso = crate::testes::imagem_valida().gravar(&t.0);
+        let raiz = crate::testes::ler(&iso).unwrap();
+        for cor_ativa in [false, true] {
+            let tema = Tema { cor_ativa };
+            let mut antes = String::new();
+            arvore::percorrer(&raiz, &mut |e, caminho| {
+                if e.eh_diretorio() {
+                    antes += &format!(
+                        "{}\n",
+                        tema.c(&format!("{caminho}/"), &[&terminal::c::azul()])
+                    );
+                } else {
+                    antes += &format!(
+                        "{caminho}  {}\n",
+                        tema.c(&fmt_bytes(e.tamanho as u64), &[&terminal::c::cinza()])
+                    );
+                }
+            });
+            let mut agora = Vec::new();
+            escrever_lista(&mut agora, &raiz, false, &tema).unwrap();
+            assert_eq!(String::from_utf8(agora).unwrap(), antes);
+        }
+        let mut agora = Vec::new();
+        escrever_lista(&mut agora, &raiz, true, &Tema { cor_ativa: false }).unwrap();
+        let antes = format!("{}\n", serde_json::to_string(&raiz).unwrap());
+        assert_eq!(String::from_utf8(agora).unwrap(), antes);
+    }
+
     #[test]
     fn mensagem_do_panico_de_str_e_de_string() {
         let a: Box<dyn std::any::Any + Send> = Box::new("índice fora");
