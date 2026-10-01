@@ -20,13 +20,13 @@ const ARQ: u8 = 0x20;
 const DIR: u8 = ATTR_DIRETORIO;
 
 /// O cancelamento é global: os testes que extraem rodam um de cada vez.
-static EXTRACAO: Mutex<()> = Mutex::new(());
+pub(crate) static EXTRACAO: Mutex<()> = Mutex::new(());
 
 /// Pasta temporária própria de cada teste, apagada no fim.
-struct Temp(PathBuf);
+pub(crate) struct Temp(pub(crate) PathBuf);
 
 impl Temp {
-    fn nova() -> Self {
+    pub(crate) fn nova() -> Self {
         static N: AtomicU32 = AtomicU32::new(0);
         let p = std::env::temp_dir().join(format!(
             "extract-xiso-pt-teste-{}-{}",
@@ -45,7 +45,7 @@ impl Drop for Temp {
 }
 
 /// Um nó de tabela: (esquerda, direita) em palavras de 4 bytes.
-fn no(esq: u16, dir: u16, setor: u32, tamanho: u32, attr: u8, nome: &[u8]) -> Vec<u8> {
+pub(crate) fn no(esq: u16, dir: u16, setor: u32, tamanho: u32, attr: u8, nome: &[u8]) -> Vec<u8> {
     let mut v = Vec::new();
     v.extend(esq.to_le_bytes());
     v.extend(dir.to_le_bytes());
@@ -62,7 +62,7 @@ fn no(esq: u16, dir: u16, setor: u32, tamanho: u32, attr: u8, nome: &[u8]) -> Ve
 
 /// Tabela como lista encadeada pela direita (a árvore mais degenerada que
 /// existe), sem nó atravessando setor. Entradas: (nome, setor, tamanho, attr).
-fn tabela(entradas: &[(&[u8], u32, u32, u8)]) -> Vec<u8> {
+pub(crate) fn tabela(entradas: &[(&[u8], u32, u32, u8)]) -> Vec<u8> {
     // primeiro as posições, respeitando o limite de setor
     let mut pos = Vec::new();
     let mut p = 0usize;
@@ -84,18 +84,18 @@ fn tabela(entradas: &[(&[u8], u32, u32, u8)]) -> Vec<u8> {
 }
 
 /// Imagem XISO em memória, com o descritor no setor 32.
-struct Construtor {
-    bytes: Vec<u8>,
+pub(crate) struct Construtor {
+    pub(crate) bytes: Vec<u8>,
 }
 
 impl Construtor {
-    fn novo(setores: usize) -> Self {
+    pub(crate) fn novo(setores: usize) -> Self {
         Self {
             bytes: vec![0; setores * S],
         }
     }
 
-    fn por(&mut self, setor: u32, dados: &[u8]) -> &mut Self {
+    pub(crate) fn por(&mut self, setor: u32, dados: &[u8]) -> &mut Self {
         let i = setor as usize * S;
         if self.bytes.len() < i + dados.len() {
             self.bytes.resize((i + dados.len()).div_ceil(S) * S, 0);
@@ -104,7 +104,7 @@ impl Construtor {
         self
     }
 
-    fn raiz(&mut self, setor: u32, tamanho: u32) -> &mut Self {
+    pub(crate) fn raiz(&mut self, setor: u32, tamanho: u32) -> &mut Self {
         let mut d = vec![0u8; S];
         d[0..20].copy_from_slice(ASSINATURA);
         d[20..24].copy_from_slice(&setor.to_le_bytes());
@@ -113,21 +113,21 @@ impl Construtor {
         self.por(32, &d)
     }
 
-    fn gravar(&self, pasta: &Path) -> PathBuf {
+    pub(crate) fn gravar(&self, pasta: &Path) -> PathBuf {
         let p = pasta.join("teste.iso");
         fs::write(&p, &self.bytes).unwrap();
         p
     }
 }
 
-fn ler(iso: &Path) -> Result<Vec<Entrada>, Erro> {
+pub(crate) fn ler(iso: &Path) -> Result<Vec<Entrada>, Erro> {
     let mut img = Imagem::abrir(iso)?;
     arvore::ler(&mut img)
 }
 
 /// Imagem pequena e válida: um arquivo, um diretório com um arquivo dentro,
 /// um diretório vazio e um arquivo vazio.
-fn imagem_valida() -> Construtor {
+pub(crate) fn imagem_valida() -> Construtor {
     let mut c = Construtor::novo(40);
     let sub = tabela(&[(b"dentro.txt", 38, 5, ARQ)]);
     let raiz = tabela(&[
@@ -330,14 +330,14 @@ fn recusa_imagem_sem_assinatura_ou_truncada() {
     assert!(matches!(ler(&img.gravar(&t.0)), Err(Erro::Imagem(_))));
 }
 
-fn opcoes() -> Opcoes {
+pub(crate) fn opcoes() -> Opcoes {
     Opcoes {
         sem_atualizacao: false,
         sobrescrever: false,
     }
 }
 
-fn extrair_em(iso: &Path, destino: &Path, o: &Opcoes) -> Result<u64, Erro> {
+pub(crate) fn extrair_em(iso: &Path, destino: &Path, o: &Opcoes) -> Result<u64, Erro> {
     let mut img = Imagem::abrir(iso)?;
     let raiz = extrair::selecionar(arvore::ler(&mut img)?, o);
     let p = Progresso::novo("", "", arvore::totais(&raiz).bytes, true);
@@ -510,7 +510,7 @@ fn fuzz_imagem_corrompida() {
 
 use crate::criar;
 
-fn criar_de(pasta: &Path, saida: &Path) -> Result<criar::Resumo, Erro> {
+pub(crate) fn criar_de(pasta: &Path, saida: &Path) -> Result<criar::Resumo, Erro> {
     let o = criar::Opcoes {
         sobrescrever: false,
         sem_atualizacao: false,
@@ -550,7 +550,7 @@ fn pastas_iguais(a: &Path, b: &Path) {
     }
 }
 
-fn pasta_de_jogo(raiz: &Path) {
+pub(crate) fn pasta_de_jogo(raiz: &Path) {
     fs::create_dir_all(raiz.join("media/sons")).unwrap();
     fs::create_dir_all(raiz.join("vazia")).unwrap();
     fs::create_dir_all(raiz.join("muitos")).unwrap();
@@ -702,7 +702,7 @@ fn criar_cancelado_nao_deixa_nada() {
 }
 
 /// XBE mínimo: base 0x10000, certificado no byte 0x200, mídia = só DVD.
-fn xbe_falso(midia: u32) -> Vec<u8> {
+pub(crate) fn xbe_falso(midia: u32) -> Vec<u8> {
     let mut x: Vec<u8> = (0..0x3000u32).map(|i| (i * 31 + 7) as u8).collect();
     x[0..4].copy_from_slice(b"XBEH");
     x[0x104..0x108].copy_from_slice(&0x10000u32.to_le_bytes());
@@ -711,7 +711,11 @@ fn xbe_falso(midia: u32) -> Vec<u8> {
     x
 }
 
-fn criar_com(pasta: &Path, saida: &Path, liberar_midia: bool) -> Result<criar::Resumo, Erro> {
+pub(crate) fn criar_com(
+    pasta: &Path,
+    saida: &Path,
+    liberar_midia: bool,
+) -> Result<criar::Resumo, Erro> {
     let o = criar::Opcoes {
         sobrescrever: false,
         sem_atualizacao: false,
