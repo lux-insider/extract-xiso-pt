@@ -11,7 +11,7 @@ use md5::Md5;
 use sha1::{Digest, Sha1};
 
 use crate::arvore::{self, Entrada};
-use crate::erro::{Erro, Resultado};
+use crate::erro::{Contexto, Erro, Operacao, Resultado};
 use crate::imagem::{Imagem, Layout, SETOR};
 use crate::progresso::Progresso;
 use crate::sistema;
@@ -145,8 +145,8 @@ pub fn hashes(caminho: &Path, progresso: &Progresso) -> Resultado<Hashes> {
         h
     }
 
-    let mut f = File::open(caminho)?;
-    let tamanho = f.metadata()?.len();
+    let mut f = File::open(caminho).ctx(Operacao::Abrir, caminho)?;
+    let tamanho = f.metadata().ctx(Operacao::Consultar, caminho)?.len();
     std::thread::scope(|escopo| {
         // fila curta: no máximo alguns blocos na memória por hash
         let (tx_crc, rx_crc) = sync_channel::<Arc<Vec<u8>>>(4);
@@ -167,7 +167,7 @@ pub fn hashes(caminho: &Path, progresso: &Progresso) -> Resultado<Hashes> {
                 let mut n = 0;
                 // enche o bloco (read pode devolver menos que o pedido)
                 while n < BLOCO {
-                    let k = f.read(&mut buf[n..])?;
+                    let k = f.read(&mut buf[n..]).ctx(Operacao::Ler, caminho)?;
                     if k == 0 {
                         break;
                     }
@@ -350,7 +350,9 @@ pub fn verificar(
     let layout = img.layout;
     drop(img);
 
-    let tamanho = fs::metadata(caminho)?.len();
+    let tamanho = fs::metadata(caminho)
+        .ctx(Operacao::Consultar, caminho)?
+        .len();
     let p = progresso_de(tamanho);
     let r = hashes(caminho, &p);
     p.terminar(r.is_ok());

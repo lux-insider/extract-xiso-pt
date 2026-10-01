@@ -10,7 +10,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use crate::arvore::{self, Entrada};
-use crate::erro::{Erro, Resultado};
+use crate::erro::{self, Contexto, Erro, Operacao, Resultado};
 use crate::imagem::Imagem;
 use crate::progresso::Progresso;
 use crate::sistema;
@@ -65,7 +65,10 @@ pub fn extrair(
                 destino.display()
             )));
         }
-        let vazio = fs::read_dir(destino)?.next().is_none();
+        let vazio = fs::read_dir(destino)
+            .ctx(Operacao::ListarPasta, destino)?
+            .next()
+            .is_none();
         if !vazio && !opcoes.sobrescrever {
             return Err(Erro::Destino(format!(
                 "a pasta {} já existe e não está vazia; escolha outra ou use --sobrescrever",
@@ -88,7 +91,7 @@ pub fn extrair(
         caminhos: Vec::new(),
     };
     if !existia {
-        fs::create_dir_all(destino)?;
+        fs::create_dir_all(destino).ctx(Operacao::CriarPasta, destino)?;
         criados.caminhos.push(destino.to_path_buf());
     }
 
@@ -145,7 +148,7 @@ fn extrair_nivel(
                 )));
             }
             if !existente.is_some_and(|m| m.is_dir()) {
-                fs::create_dir(&alvo)?;
+                fs::create_dir(&alvo).ctx(Operacao::CriarPasta, &alvo)?;
                 criados.caminhos.push(alvo.clone());
             }
             extrair_nivel(img, &e.filhos, &alvo, criados, progresso)?;
@@ -164,10 +167,11 @@ fn extrair_arquivo(
     progresso: &Progresso,
 ) -> Resultado<()> {
     let parcial = temporario::caminho_de(alvo);
-    let mut saida = temporario::criar(&parcial)?;
+    let mut saida = temporario::criar(&parcial).ctx(Operacao::Criar, &parcial)?;
     criados.caminhos.push(parcial.clone());
 
     if e.tamanho > 0 {
+        let origem = img.caminho().to_path_buf();
         let leitor = img.leitor_em(e.setor)?;
         let mut restante = e.tamanho as usize;
         let mut buf = vec![0u8; BLOCO.min(restante)];
@@ -176,15 +180,17 @@ fn extrair_arquivo(
                 return Err(Erro::Cancelado);
             }
             let n = restante.min(buf.len());
-            leitor.read_exact(&mut buf[..n])?;
-            saida.write_all(&buf[..n])?;
+            leitor
+                .read_exact(&mut buf[..n])
+                .ctx(Operacao::Ler, &origem)?;
+            saida.write_all(&buf[..n]).ctx(Operacao::Gravar, &parcial)?;
             restante -= n;
             progresso.avancar(n as u64, &e.nome);
         }
     }
     drop(saida);
 
-    fs::rename(&parcial, alvo)?;
+    erro::renomear(&parcial, alvo)?;
     // o que existe agora é o arquivo pronto, não o parcial
     if let Some(p) = criados.caminhos.last_mut() {
         *p = alvo.to_path_buf();

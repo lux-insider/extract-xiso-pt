@@ -25,7 +25,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::arvore::{self, Entrada};
-use crate::erro::{Erro, Resultado, imagem};
+use crate::erro::{self, Contexto, Erro, Operacao, Resultado, imagem};
 use crate::imagem::{ASSINATURA, Imagem, SETOR};
 use crate::progresso::Progresso;
 use crate::sistema;
@@ -88,7 +88,7 @@ fn de_pasta_rec(
         )));
     }
     // um link simbólico para um ancestral faria a leitura girar para sempre
-    let real = fs::canonicalize(pasta)?;
+    let real = fs::canonicalize(pasta).ctx(Operacao::Consultar, pasta)?;
     if !ancestrais.insert(real.clone()) {
         return Err(Erro::Destino(format!(
             "{caminho}: é um link para uma pasta que já a contém"
@@ -96,8 +96,8 @@ fn de_pasta_rec(
     }
 
     let mut itens = Vec::new();
-    for e in fs::read_dir(pasta)? {
-        let e = e?;
+    for e in fs::read_dir(pasta).ctx(Operacao::ListarPasta, pasta)? {
+        let e = e.ctx(Operacao::ListarPasta, pasta)?;
         let nome_os = e.file_name();
         let Some(nome) = nome_os.to_str() else {
             return Err(Erro::Destino(format!(
@@ -118,7 +118,7 @@ fn de_pasta_rec(
             ));
         }
         let p = e.path();
-        let meta = fs::metadata(&p)?; // segue links
+        let meta = fs::metadata(&p).ctx(Operacao::Consultar, &p)?; // segue links
         if meta.is_dir() {
             let filhos = de_pasta_rec(&p, &cam, profundidade + 1, ancestrais, contagem)?;
             itens.push(Item {
@@ -459,9 +459,14 @@ fn preparar_midia(fonte: &mut Fonte, itens: &mut [Item]) -> Resultado<Midia> {
     // o cabeçalho de um XBE cabe folgado em 64 KiB
     let mut inicio = vec![0u8; (xbe.tamanho as usize).min(64 * 1024)];
     match (&xbe.origem, fonte) {
-        (Origem::Pasta(p), _) => File::open(p)?.read_exact(&mut inicio)?,
+        (Origem::Pasta(p), _) => File::open(p)
+            .and_then(|mut f| f.read_exact(&mut inicio))
+            .ctx(Operacao::Ler, p)?,
         (Origem::Imagem { setor }, Fonte::Imagem(img, _)) => {
-            img.leitor_em(*setor)?.read_exact(&mut inicio)?
+            let origem = img.caminho().to_path_buf();
+            img.leitor_em(*setor)?
+                .read_exact(&mut inicio)
+                .ctx(Operacao::Ler, &origem)?
         }
         (Origem::Imagem { .. }, Fonte::Pasta(_)) => {
             unreachable!("item de imagem numa fonte de pasta")
@@ -620,7 +625,7 @@ pub fn gravar(
         }
         Ok(())
     })
-    .and_then(|()| fs::rename(&parcial, saida).map_err(Erro::from));
+    .and_then(|()| erro::renomear(&parcial, saida));
     if r.is_err() {
         fs::remove_file(&parcial).ok();
     }
@@ -642,10 +647,11 @@ fn gravar_em(
     tamanho_imagem: u64,
     progresso: &Progresso,
 ) -> Resultado<()> {
-    let arquivo = temporario::criar(caminho)?;
+    let arquivo = temporario::criar(caminho).ctx(Operacao::Criar, caminho)?;
     let mut w = Escritor {
         saida: BufWriter::with_capacity(BLOCO, arquivo),
         posicao: 0,
+        caminho,
     };
 
     // setores reservados e descritor
@@ -666,8 +672,12 @@ fn gravar_em(
     gravar_arquivos(&mut w, fonte, raiz, "", progresso)?;
     let fim = tamanho_imagem - w.posicao;
     w.zeros(fim)?;
-    let arquivo = w.saida.into_inner().map_err(|e| e.into_error())?;
-    arquivo.sync_all()?;
+    let arquivo = w
+        .saida
+        .into_inner()
+        .map_err(|e| e.into_error())
+        .ctx(Operacao::Gravar, caminho)?;
+    arquivo.sync_all().ctx(Operacao::Sincronizar, caminho)?;
     Ok(())
 }
 
@@ -708,11 +718,18 @@ fn gravar_arquivos(
             continue;
         }
         w.ir_para(it.setor)?;
+        let origem = match (&it.origem, &*fonte) {
+            (Origem::Pasta(p), _) => p.clone(),
+            (Origem::Imagem { .. }, Fonte::Imagem(img, _)) => img.caminho().to_path_buf(),
+            (Origem::Imagem { .. }, Fonte::Pasta(_)) => {
+                unreachable!("item de imagem numa fonte de pasta")
+            }
+        };
         let mut leitor: Box<dyn Read + '_> = match (&it.origem, &mut *fonte) {
             (Origem::Pasta(p), _) => {
-                let f = File::open(p)?;
+                let f = File::open(p).ctx(Operacao::Abrir, p)?;
                 // o arquivo mudou de tamanho desde que a pasta foi lida?
-                if f.metadata()?.len() != it.tamanho as u64 {
+                if f.metadata().ctx(Operacao::Consultar, p)?.len() != it.tamanho as u64 {
                     return Err(Erro::Destino(format!(
                         "{cam} mudou de tamanho durante a criação da imagem"
                     )));
@@ -736,7 +753,11 @@ fn gravar_arquivos(
                 if e.kind() == std::io::ErrorKind::UnexpectedEof {
                     Erro::Destino(format!("{cam} ficou menor durante a criação da imagem"))
                 } else {
-                    e.into()
+                    Erro::Arquivo {
+                        operacao: Operacao::Ler,
+                        caminho: origem.clone(),
+                        fonte: e,
+                    }
                 }
             })?;
             aplicar_remendo(&mut buf[..k], lido, it.remendo);
@@ -750,14 +771,18 @@ fn gravar_arquivos(
 }
 
 /// Grava sequencialmente, preenchendo com zeros até cada setor pedido.
-struct Escritor {
+struct Escritor<'a> {
     saida: BufWriter<File>,
     posicao: u64,
+    /// Para as mensagens de erro.
+    caminho: &'a Path,
 }
 
-impl Escritor {
+impl Escritor<'_> {
     fn bytes(&mut self, b: &[u8]) -> Resultado<()> {
-        self.saida.write_all(b)?;
+        self.saida
+            .write_all(b)
+            .ctx(Operacao::Gravar, self.caminho)?;
         self.posicao += b.len() as u64;
         Ok(())
     }

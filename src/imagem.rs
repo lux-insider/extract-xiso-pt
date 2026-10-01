@@ -3,9 +3,9 @@
 
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use crate::erro::{Resultado, imagem};
+use crate::erro::{Contexto, Operacao, Resultado, imagem};
 
 pub const SETOR: u64 = 2048;
 /// O descritor de volume fica no setor 32 da partição.
@@ -51,6 +51,8 @@ impl Layout {
 /// Uma imagem aberta, com o descritor de volume já conferido.
 pub struct Imagem {
     arquivo: File,
+    /// Para as mensagens de erro de leitura.
+    caminho: PathBuf,
     pub layout: Layout,
     /// Tamanho da partição: do início dela ao fim do arquivo.
     pub tamanho_volume: u64,
@@ -62,9 +64,10 @@ pub struct Imagem {
 
 impl Imagem {
     pub fn abrir(caminho: &Path) -> Resultado<Self> {
-        let mut arquivo = File::open(caminho)?;
-        let tamanho_arquivo = arquivo.metadata()?.len();
-        if !arquivo.metadata()?.is_file() {
+        let mut arquivo = File::open(caminho).ctx(Operacao::Abrir, caminho)?;
+        let meta = arquivo.metadata().ctx(Operacao::Consultar, caminho)?;
+        let tamanho_arquivo = meta.len();
+        if !meta.is_file() {
             return Err(imagem(format!("{} não é um arquivo", caminho.display())));
         }
 
@@ -74,8 +77,10 @@ impl Imagem {
                 continue;
             }
             let mut descritor = vec![0u8; SETOR as usize];
-            arquivo.seek(SeekFrom::Start(pos))?;
-            arquivo.read_exact(&mut descritor)?;
+            arquivo
+                .seek(SeekFrom::Start(pos))
+                .and_then(|_| arquivo.read_exact(&mut descritor))
+                .ctx(Operacao::Ler, caminho)?;
             if &descritor[0..20] != ASSINATURA {
                 continue;
             }
@@ -84,6 +89,7 @@ impl Imagem {
             let criacao = u64::from_le_bytes(descritor[28..36].try_into().unwrap());
             let img = Self {
                 arquivo,
+                caminho: caminho.to_path_buf(),
                 layout,
                 tamanho_volume: tamanho_arquivo - layout.deslocamento(),
                 setor_raiz,
@@ -122,19 +128,26 @@ impl Imagem {
     pub fn ler(&mut self, setor: u32, tamanho: usize, o_que: &str) -> Resultado<Vec<u8>> {
         self.conferir_trecho(setor, tamanho as u64, o_que)?;
         let mut buf = vec![0u8; tamanho];
-        self.arquivo.seek(SeekFrom::Start(
-            self.layout.deslocamento() + setor as u64 * SETOR,
-        ))?;
-        self.arquivo.read_exact(&mut buf)?;
+        self.leitor_em(setor)?
+            .read_exact(&mut buf)
+            .ctx(Operacao::Ler, &self.caminho)?;
         Ok(buf)
     }
 
     /// Posiciona o arquivo no início do conteúdo de `setor`, para leitura em
     /// fluxo (extração de arquivos grandes sem carregar tudo na memória).
+    /// Um erro na leitura que vem depois se explica com `caminho()`.
     pub fn leitor_em(&mut self, setor: u32) -> Resultado<&mut File> {
-        self.arquivo.seek(SeekFrom::Start(
-            self.layout.deslocamento() + setor as u64 * SETOR,
-        ))?;
+        self.arquivo
+            .seek(SeekFrom::Start(
+                self.layout.deslocamento() + setor as u64 * SETOR,
+            ))
+            .ctx(Operacao::Ler, &self.caminho)?;
         Ok(&mut self.arquivo)
+    }
+
+    /// O arquivo da imagem.
+    pub fn caminho(&self) -> &Path {
+        &self.caminho
     }
 }

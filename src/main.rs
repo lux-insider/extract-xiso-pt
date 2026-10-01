@@ -56,7 +56,7 @@ use std::path::Path;
 use clap::Parser;
 
 use cli::{Cli, Comando};
-use erro::{Erro, Resultado};
+use erro::{Contexto, Erro, Operacao, Resultado};
 use imagem::Imagem;
 use terminal::{LARGURA, Tema, emo, fmt_bytes};
 
@@ -454,7 +454,9 @@ fn reescrever_cmd(
         };
         saida!("{}", tema.campo("Nova", &destino, emo::DESTINO(), 16));
     }
-    let antes = std::fs::metadata(caminho)?.len();
+    let antes = std::fs::metadata(caminho)
+        .ctx(Operacao::Consultar, caminho)?
+        .len();
     let mut fonte = criar::Fonte::Imagem(&mut img, raiz);
     let prep = criar::preparar(&mut fonte, &opcoes)?;
     // com --substituir grava ao lado e só troca depois de pronta e relida
@@ -479,10 +481,12 @@ fn reescrever_cmd(
         "Reescrevendo",
     )?;
     drop(img); // no Windows um arquivo aberto não pode ser substituído
-    let depois = std::fs::metadata(&alvo)?.len();
-    if substituir && let Err(e) = std::fs::rename(&alvo, caminho) {
+    let depois = std::fs::metadata(&alvo)
+        .ctx(Operacao::Consultar, &alvo)?
+        .len();
+    if substituir && let Err(e) = erro::renomear(&alvo, caminho) {
         std::fs::remove_file(&alvo).ok();
-        return Err(e.into());
+        return Err(e);
     }
     if !json {
         tema.info_linha(

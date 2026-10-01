@@ -175,3 +175,44 @@ fn s5_sighup_no_meio_da_extracao_limpa_tudo() {
         "a pasta criada pela extração deveria ter sido apagada"
     );
 }
+
+/// E-1: um erro de E/S diz qual arquivo e qual operação falhou.
+#[test]
+fn e1_erro_de_es_diz_arquivo_e_operacao() {
+    let t = Temp::nova("e1");
+    let nada = t.0.join("não existe.iso");
+    let o = rodar(&["info".as_ref(), nada.as_os_str()]);
+    assert_eq!(o.status.code(), Some(1));
+    let err = String::from_utf8_lossy(&o.stderr);
+    let esperado = format!("não foi possível abrir {}: não existe", nada.display());
+    assert!(err.contains(&esperado), "{err}");
+
+    let (_, iso) = jogo_pequeno(&t);
+    let dat = t.0.join("sumiu.dat");
+    let o = rodar(&[
+        "verificar".as_ref(),
+        iso.as_os_str(),
+        "--dat".as_ref(),
+        dat.as_os_str(),
+    ]);
+    let err = String::from_utf8_lossy(&o.stderr);
+    let esperado = format!("não foi possível abrir {}: não existe", dat.display());
+    assert!(err.contains(&esperado), "{err}");
+}
+
+/// Uma pasta de jogo com dois arquivos e a imagem criada a partir dela.
+fn jogo_pequeno(t: &Temp) -> (PathBuf, PathBuf) {
+    let jogo = t.0.join("pequeno");
+    fs::create_dir_all(&jogo).unwrap();
+    fs::write(jogo.join("default.xex"), b"XEX2").unwrap();
+    fs::write(jogo.join("dados.bin"), vec![7u8; 5000]).unwrap();
+    let iso = t.0.join("pequeno.iso");
+    let o = rodar(&[
+        "criar".as_ref(),
+        jogo.as_os_str(),
+        "-s".as_ref(),
+        iso.as_os_str(),
+    ]);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    (jogo, iso)
+}

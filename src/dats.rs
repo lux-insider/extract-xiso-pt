@@ -14,7 +14,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use crate::arvore;
-use crate::erro::{Erro, Resultado};
+use crate::erro::{self, Contexto, Erro, Operacao, Resultado};
 use crate::temporario;
 use crate::verificar::{Rom, ler_dat};
 
@@ -73,9 +73,11 @@ pub fn ler_arquivo(caminho: &Path) -> Resultado<Vec<(String, String)>> {
     // engano ou um link chamado x.dat na pasta dos .dat não vão inteiros
     // para a memória
     let mut bytes = Vec::new();
-    fs::File::open(caminho)?
+    fs::File::open(caminho)
+        .ctx(Operacao::Abrir, caminho)?
         .take(MAX_DAT as u64 + 1)
-        .read_to_end(&mut bytes)?;
+        .read_to_end(&mut bytes)
+        .ctx(Operacao::Ler, caminho)?;
     if bytes.len() > MAX_DAT {
         return Err(Erro::Destino(format!(
             "{} é grande demais para um .dat",
@@ -180,7 +182,7 @@ pub fn instalados() -> (Vec<Dat>, Vec<String>) {
 pub fn instalar(origem: &Path) -> Resultado<Vec<(String, String, PathBuf)>> {
     let destino =
         pasta().ok_or_else(|| Erro::Destino("não achei uma pasta para guardar os .dat".into()))?;
-    fs::create_dir_all(&destino)?;
+    fs::create_dir_all(&destino).ctx(Operacao::CriarPasta, &destino)?;
     let (existentes, _) = instalados();
     let mut feitos = Vec::new();
     for (nome, texto) in ler_arquivo(origem)? {
@@ -195,9 +197,13 @@ pub fn instalar(origem: &Path) -> Resultado<Vec<(String, String, PathBuf)>> {
         let temp = temporario::caminho_de(&alvo);
         if let Err(e) = temporario::criar(&temp).and_then(|mut f| f.write_all(texto.as_bytes())) {
             fs::remove_file(&temp).ok();
-            return Err(e.into());
+            return Err(Erro::Arquivo {
+                operacao: Operacao::Gravar,
+                caminho: temp,
+                fonte: e,
+            });
         }
-        fs::rename(&temp, &alvo).inspect_err(|_| {
+        erro::renomear(&temp, &alvo).inspect_err(|_| {
             fs::remove_file(&temp).ok();
         })?;
         // a versão antiga do mesmo sistema: só um nome simples da pasta, e
