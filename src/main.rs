@@ -68,8 +68,23 @@ fn main() {
     sistema::instalar_cancelamento();
     terminal::preparar_console();
 
-    let cli = Cli::parse();
-    let json = matches!(
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(e) => {
+            use clap::error::ErrorKind;
+            if matches!(e.kind(), ErrorKind::DisplayHelp | ErrorKind::DisplayVersion) {
+                e.exit(); // --help e --version: saída 0
+            }
+            // Erro de uso sai com 1, como os outros erros: o clap usaria 2,
+            // que é o "não confere" do verificar (um xiso-manager mais novo
+            // passando uma opção que esta versão não conhece leria "imagem
+            // modificada").
+            let _ = e.print();
+            std::process::exit(1);
+        }
+    };
+    // modos em que o erro sai como evento JSON em stdout (o protocolo)
+    let progresso_json = matches!(
         &cli.comando,
         Comando::Extrair {
             progresso_json: true,
@@ -80,25 +95,59 @@ fn main() {
         } | Comando::Reescrever {
             progresso_json: true,
             ..
+        } | Comando::Verificar {
+            progresso_json: true,
+            ..
         }
     );
+    // o verificar --progresso-json sempre mostrou o erro também no stderr
+    let texto = !progresso_json || matches!(&cli.comando, Comando::Verificar { .. });
+    instalar_gancho_de_panico(progresso_json);
     match executar(cli.comando) {
         Ok(()) => {}
         Err(Erro::Cancelado) => {
-            progresso::erro_final("Operação cancelada.", json);
-            if !json {
+            progresso::erro_final("Operação cancelada.", progresso_json);
+            if texto {
                 Tema::detectar().aviso("Operação cancelada; o que ela tinha criado foi apagado.");
             }
             std::process::exit(SAIDA_CANCELADO);
         }
         Err(e) => {
-            progresso::erro_final(&e.to_string(), json);
-            if !json {
+            progresso::erro_final(&e.to_string(), progresso_json);
+            if texto {
                 Tema::detectar().erro(&e.to_string());
             }
             std::process::exit(1);
         }
     }
+}
+
+/// Um pânico é um bug: em vez da mensagem padrão em inglês ("thread 'main'
+/// panicked at..."), diz em português o que houve e onde, e no modo
+/// `--progresso-json` também emite o evento `erro`, para quem lê o protocolo
+/// não ficar sem resposta. Depois o processo aborta (`panic = "abort"`).
+fn instalar_gancho_de_panico(json: bool) {
+    std::panic::set_hook(Box::new(move |info| {
+        let onde = info
+            .location()
+            .map(|l| format!(" ({}:{})", l.file(), l.line()))
+            .unwrap_or_default();
+        let texto = format!(
+            "erro interno: {}{onde}. Isto é um defeito do extract-xiso-pt; por favor, relate em \
+             https://github.com/lux-insider/extract-xiso-pt/issues",
+            mensagem_do_panico(info.payload())
+        );
+        progresso::erro_final(&texto, json);
+        Tema::detectar().erro(&texto);
+    }));
+}
+
+fn mensagem_do_panico(payload: &(dyn std::any::Any + Send)) -> &str {
+    payload
+        .downcast_ref::<&str>()
+        .copied()
+        .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+        .unwrap_or("pânico sem mensagem")
 }
 
 fn executar(comando: Comando) -> Resultado<()> {
@@ -754,4 +803,17 @@ fn dats_cmd(acao: cli::AcaoDats) -> Resultado<()> {
 
 fn titulo_app() -> String {
     format!("extract-xiso-pt v{}", env!("CARGO_PKG_VERSION"))
+}
+
+#[cfg(test)]
+mod testes_main {
+    #[test]
+    fn mensagem_do_panico_de_str_e_de_string() {
+        let a: Box<dyn std::any::Any + Send> = Box::new("índice fora");
+        let b: Box<dyn std::any::Any + Send> = Box::new(String::from("estouro"));
+        let c: Box<dyn std::any::Any + Send> = Box::new(42u8);
+        assert_eq!(super::mensagem_do_panico(a.as_ref()), "índice fora");
+        assert_eq!(super::mensagem_do_panico(b.as_ref()), "estouro");
+        assert_eq!(super::mensagem_do_panico(c.as_ref()), "pânico sem mensagem");
+    }
 }
