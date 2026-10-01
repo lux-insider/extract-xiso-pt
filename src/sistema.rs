@@ -27,19 +27,33 @@ static CANCELADO: AtomicBool = AtomicBool::new(false);
 /// `true` depois que o usuário apertou Ctrl+C. Consultado entre blocos da
 /// conversão (ver `crate::god`), nunca no meio de uma escrita.
 pub fn cancelado() -> bool {
+    #[cfg(test)]
+    if CANCELADO_TESTE.get() {
+        return true;
+    }
     CANCELADO.load(Ordering::SeqCst)
 }
 
 /// Limpa o sinalizador. Usado pelo assistente ao voltar para o menu depois
 /// de uma conversão cancelada — o próximo item começa do zero.
 pub fn limpar_cancelamento() {
+    #[cfg(test)]
+    CANCELADO_TESTE.set(false);
     CANCELADO.store(false, Ordering::SeqCst);
+}
+
+// Nos testes, o cancelamento simulado vale só para a thread do teste que o
+// pediu: os testes rodam em paralelo, e um pedido global faria outro teste
+// (que só lê uma árvore, por exemplo) receber `Cancelado` no meio.
+#[cfg(test)]
+thread_local! {
+    static CANCELADO_TESTE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 /// Marca cancelamento sem passar por sinal (usado em testes).
 #[cfg(test)]
 pub fn marcar_cancelamento() {
-    CANCELADO.store(true, Ordering::SeqCst);
+    CANCELADO_TESTE.set(true);
 }
 
 #[cfg(unix)]
@@ -251,23 +265,31 @@ mod testes {
     #[cfg(unix)]
     #[test]
     fn s5_sighup_cancela_mas_respeita_nohup() {
-        let _v = crate::testes::EXTRACAO
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        // Confere o tratador instalado, sem disparar o sinal: o
+        // cancelamento é global e outros testes rodam em paralelo. O sinal
+        // de verdade é testado com o programa em tests/cli.rs.
+        fn tratador_do_sighup() -> libc::sighandler_t {
+            unsafe {
+                let mut atual: libc::sigaction = std::mem::zeroed();
+                libc::sigaction(libc::SIGHUP, std::ptr::null(), &mut atual);
+                atual.sa_sigaction
+            }
+        }
         unsafe {
             // como o nohup deixa
             libc::signal(libc::SIGHUP, libc::SIG_IGN);
             instalar_cancelamento();
-            libc::raise(libc::SIGHUP);
         }
-        assert!(!cancelado(), "com nohup, SIGHUP não cancela");
+        assert_eq!(
+            tratador_do_sighup(),
+            libc::SIG_IGN,
+            "com nohup, fica ignorado"
+        );
         unsafe {
             libc::signal(libc::SIGHUP, libc::SIG_DFL);
             instalar_cancelamento();
-            libc::raise(libc::SIGHUP);
         }
-        let cancelou = cancelado();
-        limpar_cancelamento();
-        assert!(cancelou, "SIGHUP deveria cancelar a operação");
+        let esperado = tratar_sigterm as extern "C" fn(libc::c_int) as libc::sighandler_t;
+        assert_eq!(tratador_do_sighup(), esperado, "SIGHUP deveria cancelar");
     }
 }
