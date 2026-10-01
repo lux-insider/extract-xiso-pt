@@ -131,7 +131,18 @@ fn extrair_nivel(
         }
         let alvo = pasta.join(&e.nome);
         if e.eh_diretorio() {
-            if !alvo.is_dir() {
+            // `symlink_metadata` não segue links: com --sobrescrever, uma
+            // pasta do destino que é link (ou junção, no Windows) levaria a
+            // extração para fora dele
+            let existente = fs::symlink_metadata(&alvo).ok();
+            if existente.as_ref().is_some_and(|m| m.file_type().is_symlink()) {
+                return Err(Erro::Destino(format!(
+                    "{} é um link simbólico; a extração não grava através de links, \
+                     para não sair da pasta de destino",
+                    alvo.display()
+                )));
+            }
+            if !existente.is_some_and(|m| m.is_dir()) {
                 fs::create_dir(&alvo)?;
                 criados.caminhos.push(alvo.clone());
             }

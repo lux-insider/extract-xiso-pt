@@ -23,6 +23,8 @@ mod terminal;
 #[cfg(test)]
 mod testes;
 #[cfg(test)]
+mod testes_auditoria;
+#[cfg(test)]
 mod testes_saida;
 mod verificar;
 
