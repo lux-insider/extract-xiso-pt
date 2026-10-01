@@ -1,6 +1,9 @@
 //! Um teste por correção da auditoria (ver AUDITORIA.md): cada um monta o
 //! cenário que causava o problema e confere que ele não acontece mais.
 
+// Vários cenários (links simbólicos, sinais) só existem no Unix.
+#![cfg_attr(not(unix), allow(unused_imports, dead_code))]
+
 use std::fs;
 
 use crate::erro::Erro;
