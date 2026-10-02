@@ -40,6 +40,6 @@ jobs:
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
       - name: Testes (debug)
-        run: cargo test
+        run: cargo test --no-fail-fast
       - name: Testes (release)
-        run: cargo test --release
+        run: cargo test --release --no-fail-fast
