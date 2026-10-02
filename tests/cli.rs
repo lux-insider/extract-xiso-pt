@@ -10,6 +10,9 @@ use std::process::{Command, Output, Stdio};
 
 const BIN: &str = env!("CARGO_BIN_EXE_extract-xiso-pt");
 
+#[cfg(windows)]
+mod console_windows;
+
 /// Pasta temporária própria de cada teste, apagada no fim.
 struct Temp(PathBuf);
 
@@ -169,6 +172,44 @@ fn s5_sighup_no_meio_da_extracao_limpa_tudo() {
     let ultima = linhas.map(|l| l.unwrap()).last().unwrap_or_default();
     let status = filho.wait().unwrap();
     assert_eq!(status.code(), Some(130), "{status:?}");
+    assert!(ultima.contains("\"evento\":\"erro\""), "{ultima}");
+    assert!(
+        !d.exists(),
+        "a pasta criada pela extração deveria ter sido apagada"
+    );
+}
+
+/// S-5 no Windows: fechar a janela no meio da extração cancela de forma
+/// limpa: código 130 e nada do que foi criado fica para trás. O programa
+/// roda num console próprio, fechado como pelo X da janela.
+#[cfg(windows)]
+#[test]
+fn s5_janela_fechada_no_meio_da_extracao_limpa_tudo() {
+    use std::io::{BufRead, BufReader};
+    let t = Temp::nova("s5-janela");
+    let iso = imagem_com_um_arquivo_grande(&t, 1 << 30);
+    let d = t.0.join("saida");
+    let (janela, saida) = console_windows::Janela::abrir(
+        Path::new(BIN),
+        &[
+            "extrair".as_ref(),
+            iso.as_os_str(),
+            "-d".as_ref(),
+            d.as_os_str(),
+            "--progresso-json".as_ref(),
+        ],
+    );
+    let mut linhas = BufReader::new(saida).lines();
+    // o primeiro evento de progresso: o .parcial já existe
+    for l in linhas.by_ref() {
+        if l.unwrap().contains("\"evento\":\"progresso\"") {
+            break;
+        }
+    }
+    janela.fechar();
+    let ultima = linhas.map(|l| l.unwrap()).last().unwrap_or_default();
+    let codigo = janela.esperar(std::time::Duration::from_secs(30));
+    assert_eq!(codigo, Some(130));
     assert!(ultima.contains("\"evento\":\"erro\""), "{ultima}");
     assert!(
         !d.exists(),
