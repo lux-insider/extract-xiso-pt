@@ -625,24 +625,32 @@ fn criar_e_extrair_devolve_a_mesma_pasta() {
 #[test]
 fn criar_recusa_o_que_nao_daria_uma_imagem_valida() {
     let t = Temp::nova();
+    // Os dois primeiros casos só dá para montar onde o sistema de arquivos
+    // deixa: no Windows o "a.TXT" sobrescreve o "A.txt", e o "aux.txt" pode
+    // ser o dispositivo AUX em vez de um arquivo.
+    let montou = |j: &Path, n: usize| fs::read_dir(j).unwrap().count() == n;
+
     // nomes iguais sem diferenciar maiúsculas (possível no Linux)
     let j = t.0.join("dup");
     fs::create_dir_all(&j).unwrap();
     fs::write(j.join("A.txt"), b"1").unwrap();
     fs::write(j.join("a.TXT"), b"2").unwrap();
-    assert!(matches!(
-        criar_de(&j, &t.0.join("dup.iso")),
-        Err(Erro::Destino(_))
-    ));
+    if montou(&j, 2) {
+        assert!(matches!(
+            criar_de(&j, &t.0.join("dup.iso")),
+            Err(Erro::Destino(_))
+        ));
+    }
 
     // nome que o Windows não aceita
     let j = t.0.join("res");
     fs::create_dir_all(&j).unwrap();
-    fs::write(j.join("aux.txt"), b"1").unwrap();
-    assert!(matches!(
-        criar_de(&j, &t.0.join("res.iso")),
-        Err(Erro::Destino(_))
-    ));
+    if fs::write(j.join("aux.txt"), b"1").is_ok() && montou(&j, 1) {
+        assert!(matches!(
+            criar_de(&j, &t.0.join("res.iso")),
+            Err(Erro::Destino(_))
+        ));
+    }
 
     // imagem dentro da própria pasta de origem
     let j = t.0.join("dentro");
