@@ -38,12 +38,19 @@ fn sha1_hex(b: &[u8]) -> String {
 }
 
 /// Lista de tudo o que há numa pasta: tipo, caminho, tamanho e SHA-1 de cada
-/// arquivo, em ordem de bytes do caminho.
+/// arquivo, em ordem de bytes do caminho. As partes do caminho são juntadas
+/// com "/" em qualquer sistema, para o mesmo golden valer no Windows.
 fn manifesto(raiz: &Path) -> String {
     fn rec(raiz: &Path, pasta: &Path, linhas: &mut Vec<String>) {
         for e in fs::read_dir(pasta).unwrap() {
             let p = e.unwrap().path();
-            let rel = p.strip_prefix(raiz).unwrap().to_string_lossy().into_owned();
+            let rel = p
+                .strip_prefix(raiz)
+                .unwrap()
+                .components()
+                .map(|c| c.as_os_str().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("/");
             let meta = fs::symlink_metadata(&p).unwrap();
             if meta.is_dir() {
                 linhas.push(format!("d {rel}"));
