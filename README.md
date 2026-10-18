@@ -1,15 +1,36 @@
 # extract-xiso-pt
 
-Ferramenta para imagens de disco de **Xbox** e **Xbox 360** (sistema de
-arquivos XDVDFS): listar, extrair, criar a partir de uma pasta, reescrever
-como XISO enxuta e verificar a integridade — escrita do zero em **Rust**, com
-binários pequenos para Linux e Windows e a mesma interface de terminal do
-[iso2god-pt](https://github.com/lux-insider/iso2god-pt).
+[![Versão](https://img.shields.io/github/v/release/lux-insider/extract-xiso-pt?label=vers%C3%A3o)](https://github.com/lux-insider/extract-xiso-pt/releases/latest)
+[![Testes](https://github.com/lux-insider/extract-xiso-pt/actions/workflows/testes.yml/badge.svg)](https://github.com/lux-insider/extract-xiso-pt/actions/workflows/testes.yml)
+[![Licença: MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-blue)](LICENSE)
+![Plataformas](https://img.shields.io/badge/plataformas-Windows%20%7C%20Linux-informational)
 
-Este projeto é uma implementação independente. Ele foi escrito a partir da
-documentação pública do formato; o `extract-xiso` do XboxDev serviu só como
-referência **de fora**: as saídas dos dois foram comparadas em imagens de
-teste, e nenhum código-fonte dele foi usado.
+Ferramenta para imagens de disco de **Xbox** e **Xbox 360** (sistema de
+arquivos XDVDFS), em **Rust** e em português: **listar**, **extrair**,
+**criar** a partir de uma pasta, **reescrever** como XISO enxuta e
+**verificar** a integridade, inclusive contra os `.dat` do Redump.
+
+É uma implementação independente, escrita a partir da documentação pública
+do formato. O resultado foi validado por comparação de saídas com o
+`extract-xiso` em imagens de teste e jogos reais, sem uso do código-fonte
+dele.
+
+---
+
+## Sumário
+
+- [Recursos](#recursos)
+- [Download](#download)
+- [Uso](#uso)
+- [Códigos de saída](#códigos-de-saída)
+- [Integração com outros programas](#integração-com-outros-programas)
+- [Compilação](#compilação)
+- [Estrutura do projeto](#estrutura-do-projeto)
+- [Testes](#testes)
+- [Documentação](#documentação)
+- [Licença](#licença)
+
+---
 
 ## Recursos
 
@@ -44,33 +65,23 @@ teste, e nenhum código-fonte dele foi usado.
 - Protocolo `--progresso-json`, o mesmo do iso2god-pt, para outro programa
   (como o xiso-manager) mostrar a barra de progresso.
 
-## Instalação / build
+---
 
-Baixe um binário pronto na [página de Releases](https://github.com/lux-insider/extract-xiso-pt/releases),
-ou compile a partir do código-fonte (requer o [Rust](https://rustup.rs),
-edição 2024):
+## Download
 
-```bash
-git clone https://github.com/lux-insider/extract-xiso-pt.git
-cd extract-xiso-pt
-cargo build --release
-cp target/release/extract-xiso-pt ~/.local/bin/
-```
+Baixe a versão mais recente na página de
+[**Releases**](https://github.com/lux-insider/extract-xiso-pt/releases/latest).
 
-### Windows
+| Arquivo | Sistema |
+|---|---|
+| `extract-xiso-pt-linux-x86_64` | Linux x86_64 (glibc 2.34+) |
+| `extract-xiso-pt-windows-x86_64.exe` | Windows 10 e 11 (64 bits) |
+| `SHA256SUMS.txt` | hashes para conferir os downloads |
 
-O `extract-xiso-pt.exe` da página de Releases roda no Windows 10/11 (64
-bits) sem instalar nada. Para gerá-lo a partir do Linux:
+No Linux, dê `chmod +x` no binário. No Windows não é preciso instalar nada: o
+`.exe` não depende do Visual C++ Redistributable.
 
-```bash
-sudo apt install clang lld llvm
-rustup target add x86_64-pc-windows-msvc
-cargo install --locked cargo-xwin
-cargo xwin build --release --target x86_64-pc-windows-msvc
-```
-
-O `.exe` fica em `target/x86_64-pc-windows-msvc/release/`. O CRT é estático:
-ele não depende do Visual C++ Redistributable.
+---
 
 ## Uso
 
@@ -128,7 +139,9 @@ certificado é assinado, então isso serve para console desbloqueado ou
 emulador, e a imagem deixa de ser idêntica ao disco. Por isso é opção, e não
 o padrão.
 
-### Códigos de saída
+---
+
+## Códigos de saída
 
 | Código | Significado |
 |---|---|
@@ -137,7 +150,9 @@ o padrão.
 | 2 | `verificar`: o Redump tem este jogo com outro SHA-1 (modificado, corrompido ou outra versão); com `--dat`, também quando a imagem não está no .dat |
 | 130 | cancelado (Ctrl+C, SIGTERM, terminal ou janela fechados) |
 
-### Modo máquina
+---
+
+## Integração com outros programas
 
 ```bash
 extract-xiso-pt extrair jogo.iso -d pasta/ --progresso-json
@@ -146,27 +161,78 @@ extract-xiso-pt info jogo.iso --json
 ```
 
 Com isso, o programa emite uma linha JSON por evento em stdout: `fase`,
-`progresso` (bytes, velocidade e ETA), `concluido` ou `erro`.
+`progresso` (bytes, velocidade e ETA), `concluido` ou `erro`. É o mesmo
+protocolo do [iso2god-pt](https://github.com/lux-insider/iso2god-pt), usado pelo
+[xiso-manager](https://github.com/lux-insider/xiso-manager) para a barra de progresso.
 
-## Estrutura do repositório
+---
+
+## Compilação
+
+Requisitos: [Rust](https://rustup.rs) estável (edição 2024).
+
+```bash
+git clone https://github.com/lux-insider/extract-xiso-pt.git
+cd extract-xiso-pt
+cargo build --release          # target/release/extract-xiso-pt
+cargo test --release
+```
+
+Para gerar o `.exe` do Windows a partir do Linux:
+
+```bash
+sudo apt install clang lld llvm
+rustup target add x86_64-pc-windows-msvc
+cargo install --locked cargo-xwin
+cargo xwin build --release --target x86_64-pc-windows-msvc
+```
+
+O CRT é estático: o `.exe` não depende do Visual C++ Redistributable.
+
+---
+
+## Estrutura do projeto
 
 ```
-src/imagem.rs     onde fica a partição, descritor de volume, leitura segura
-src/arvore.rs     árvore de arquivos, validada
-src/extrair.rs    extração atômica
-src/criar.rs      gravação de XISO (pasta ou outra imagem), --liberar-midia
-src/verificar.rs  estrutura, hashes e comparação com .dat
-src/dats.rs       .dat instalados, leitura de .zip
-src/testes.rs     imagens sintéticas, entradas hostis e fuzz
-PLANO.md          o formato e as decisões de segurança
+src/
+├── main.rs, cli.rs     linha de comando e subcomandos
+├── imagem.rs           localização da partição, descritor de volume e leitura segura
+├── arvore.rs           árvore de arquivos, validada contra laços e nomes perigosos
+├── extrair.rs          extração atômica
+├── criar.rs            gravação de XISO (de uma pasta ou de outra imagem) e --liberar-midia
+├── verificar.rs        estrutura, hashes e comparação com .dat
+├── dats.rs             .dat instalados e leitura de .zip
+├── temporario.rs       arquivos temporários e troca atômica de nome
+├── progresso.rs        eventos de progresso e protocolo JSON
+├── terminal.rs         cores, barra de progresso e símbolos
+└── testes*.rs          imagens sintéticas, entradas hostis e fuzz
+tests/                  testes do programa completo, incluindo o console do Windows
 ```
 
-## Créditos
+---
 
-- O formato XDVDFS vem da documentação pública da comunidade do Xbox.
-- [extract-xiso](https://github.com/XboxDev/extract-xiso) (XboxDev), usado só
-  como referência de comportamento para comparar as saídas.
+## Testes
+
+- **68 testes** (`cargo test --release`), com imagens sintéticas de todos os
+  layouts, milhares de imagens corrompidas de propósito e comparação de
+  saídas byte a byte.
+- **Integração contínua** no GitHub Actions, no Linux e no Windows.
+- **Validação com jogos reais:** Resident Evil 5, Resident Evil 6, Need for
+  Speed Most Wanted e jogos de Xbox Original, com `verificar` idêntico ao
+  Redump e extração idêntica à do `extract-xiso`.
+
+---
+
+## Documentação
+
+| Documento | Conteúdo |
+|---|---|
+| [CHANGELOG.md](CHANGELOG.md) | histórico de versões |
+| [PLANO.md](PLANO.md) | o formato XDVDFS e as decisões de segurança |
+| [AUDITORIA.md](AUDITORIA.md) | auditoria de segurança e confiabilidade, com cada achado e sua correção |
+
+---
 
 ## Licença
 
-[MIT](LICENSE).
+Código sob a licença [MIT](LICENSE).
