@@ -218,6 +218,14 @@ fn recusa_nomes_que_saem_do_destino_ou_quebram_no_windows() {
         b"CON",
         b"nul.txt",
         b"com1.dat",
+        b"CONIN$",
+        b"conout$.log",
+        b"COM0",
+        b"lpt0.txt",
+        b"COM\xb9",
+        "LPT³.bin".as_bytes(),
+        b"CON .txt",
+        b"aux  .dat",
         b"a*b",
         b"a?b",
         b"a|b",
@@ -225,6 +233,25 @@ fn recusa_nomes_que_saem_do_destino_ou_quebram_no_windows() {
         b"<a>",
     ] {
         recusa_nome(n);
+    }
+}
+
+#[test]
+fn aceita_nomes_so_parecidos_com_os_reservados() {
+    for n in [
+        &b"CONSOLE.txt"[..],
+        b"COM10",
+        b"conin.txt",
+        b"LPT",
+        b"nulo.dat",
+        b"AUXILIAR",
+        b"COM1x",
+    ] {
+        let t = Temp::nova();
+        let tab = tabela(&[(n, 0, 0, ARQ)]);
+        let mut img = Construtor::novo(35);
+        img.raiz(33, tab.len() as u32).por(33, &tab);
+        assert!(ler(&img.gravar(&t.0)).is_ok(), "nome {:?} deveria ser aceito", String::from_utf8_lossy(n));
     }
 }
 

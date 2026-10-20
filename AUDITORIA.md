@@ -546,3 +546,77 @@ para a thread que o fez (`36839f0`); a suíte passou 5 vezes seguidas.
 
 O A-6, que abria esta lista, foi corrigido depois com autorização (ver o
 item): era o único achado grave sem correção.
+
+---
+
+# Segunda auditoria — 0.2.3 (20/10/2026)
+
+Escopo: o extract-xiso-pt 0.2.3 inteiro, com foco no que a primeira não
+cobriu: o uso por outro programa sem console (a futura interface gráfica do
+xiso-manager), o Windows (testado pelo Wine) e entradas hostis geradas ao
+acaso. A regra da primeira auditoria continua: nenhuma correção muda os bytes
+gravados para entradas válidas (os testes de `src/testes_saida.rs` passam
+sem alteração).
+
+## O que foi testado
+
+- **Compilação e testes:** Rust 1.99.1, sem avisos; `cargo test` e
+  `cargo clippy --all-targets` limpos.
+- **Imagens corrompidas ao acaso:** 2.300 imagens derivadas de uma XISO
+  válida (descritor, tabelas de diretório, início do disco e truncamento),
+  cada uma passada por `info`, `listar`, `verificar`, `extrair` e
+  `reescrever`, com limite de 10 s e 2 GB de memória. Nenhum pânico,
+  travamento ou estouro.
+- **Nomes hostis:** `..`, `/x`, `a\b`, `a:b`, `q*z`, `CON`, `aux.txt`,
+  `x.`, `y ` — todos recusados antes de gravar qualquer coisa, no Linux e no
+  Windows.
+- **Windows (Wine):** extração com nomes acentuados igual à do Linux; o
+  `criar` produz a mesma imagem, byte a byte.
+- **Dependências:** nenhuma das versões do `Cargo.lock` tem aviso aberto no
+  RustSec.
+
+## Achados
+
+| # | Gravidade | Problema | Decisão |
+|---|---|---|---|
+| C-2 | Média | sem console (programa com janela no Windows) não há como pedir o cancelamento limpo; encerrar à força deixa a saída pela metade | corrigido: `--cancelar-pela-entrada` |
+| U-1 | Baixa | ajuda e erros de uso do clap em inglês | corrigido (`src/uso.rs`) |
+| U-2 | Baixa | `<IMAGEM>` e `<ARQUIVOS>` sem descrição na ajuda | corrigido |
+| W-1 | Baixa | nomes reservados do Windows incompletos (da primeira auditoria) | corrigido, anunciado no CHANGELOG da 0.2.4 |
+
+### C-2 (Média) — cancelamento sem console
+
+O cancelamento limpo depende de Ctrl+C, SIGTERM ou do fechamento da janela
+do console. Um programa com janela no Windows não tem console para mandar
+Ctrl+C; o xiso-manager, nesse caso, usa `TerminateProcess`, que encerra a
+ferramenta sem deixar a limpeza acontecer (o `.parcial` e a pasta criada
+ficam). Com `--cancelar-pela-entrada`, uma thread lê a entrada padrão e,
+quando ela fecha, marca o mesmo cancelamento do Ctrl+C. Fechar o pipe
+funciona igual no Windows e no Linux, e também quando o programa que chamou
+morre de repente. Sem a opção, a entrada nem é lida.
+
+Testes: `tests/cli.rs` (`c2_fechar_a_entrada_cancela_e_limpa`,
+`c2_entrada_aberta_nao_cancela`). Conferido também no Windows (Wine) com
+`extrair`, `criar`, `reescrever` e `verificar` numa imagem de 600 MB:
+código 130 em menos de 2 s, nada sobrando.
+
+### U-1 e U-2 (Baixa) — ajuda e erros em português
+
+O texto montado pelo clap passa por uma tabela de trocas (`src/uso.rs`):
+formato e cores continuam os do clap. O código de saída do erro de uso
+continua 1. Testes: `uso::testes` e `u1_ajuda_e_erros_de_uso_em_portugues`.
+Isso resolve, sem trocar o clap, o que motivava o L-2.
+
+### W-1 (Baixa) — nomes reservados
+
+Entraram `CONIN$`, `CONOUT$`, `COM0`, `LPT0`, `COM¹²³`, `LPT¹²³`, `CLOCK$`,
+`CONFIG$`, e o nome passa a ser comparado sem os espaços antes do ponto
+(`CON .txt`). Conferido no Wine: `CONIN$` falhava com "Manipulador
+inválido" e `COM¹` era gravado. Muda a validação de entrada (uma imagem com
+esses nomes passa a ser recusada também no Linux), por isso está anunciado.
+Testes: `recusa_nomes_que_saem_do_destino_ou_quebram_no_windows` e
+`aceita_nomes_so_parecidos_com_os_reservados`.
+
+## Continuam só descritos
+
+D-1, D-2, D-3, D-4 e P-7 da primeira auditoria, sem mudança.

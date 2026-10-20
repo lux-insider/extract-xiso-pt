@@ -8,6 +8,13 @@ use clap::{Parser, Subcommand};
 pub struct Cli {
     #[command(subcommand)]
     pub comando: Comando,
+    /// Cancela, apagando o que criou, quando a entrada padrão fecha.
+    ///
+    /// Para programas que chamam esta ferramenta sem console: no Windows,
+    /// sem console não chega Ctrl+C. Quem usa liga um pipe na entrada e o
+    /// fecha para cancelar.
+    #[arg(long, global = true)]
+    pub cancelar_pela_entrada: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -23,6 +30,7 @@ pub enum Comando {
 
     /// Lista os arquivos de dentro da imagem, sem extrair nada.
     Listar {
+        /// Imagem de disco (.iso / .xiso).
         imagem: PathBuf,
         /// Imprime a árvore inteira em JSON.
         #[arg(long)]
@@ -31,6 +39,7 @@ pub enum Comando {
 
     /// Extrai o conteúdo da imagem para uma pasta.
     Extrair {
+        /// Imagem de disco (.iso / .xiso).
         imagem: PathBuf,
         /// Pasta de destino. Sem ela, uma pasta com o nome da imagem, ao lado
         /// da imagem.
@@ -73,6 +82,7 @@ pub enum Comando {
     /// Regrava uma imagem como XISO enxuta: tira a partição de vídeo e o
     /// espaço vazio de discos XGD1/XGD2/XGD3 e reorganiza as tabelas.
     Reescrever {
+        /// Imagem de disco (.iso / .xiso).
         imagem: PathBuf,
         /// Imagem a criar. Sem ela, <nome>.xiso.iso ao lado da original.
         #[arg(short, long, conflicts_with = "substituir")]
@@ -100,6 +110,7 @@ pub enum Comando {
     /// Confere a integridade: estrutura inteira, leitura de todos os bytes e
     /// hashes CRC32/MD5/SHA-1, opcionalmente contra um .dat do Redump.
     Verificar {
+        /// Imagem de disco (.iso / .xiso).
         imagem: PathBuf,
         /// .dat (ou .zip do Redump) para comparar o SHA-1. Sem ele, usa os
         /// .dat instalados com `dats instalar`.
@@ -131,6 +142,7 @@ pub enum AcaoDats {
     /// Instala .dat ou .zip baixados do redump.org (troca a versão antiga do
     /// mesmo console).
     Instalar {
+        /// Arquivos .dat ou .zip do Redump.
         #[arg(required = true)]
         arquivos: Vec<PathBuf>,
     },

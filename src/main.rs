@@ -10,6 +10,7 @@
 //!   terminal.rs  cores, caixas e console do Windows (do iso2god-pt)
 //!   sistema.rs   espaço livre e Ctrl+C/SIGTERM limpos (do iso2god-pt)
 //!   temporario.rs arquivos .parcial criados sem seguir links
+//!   uso.rs       ajuda e erros de uso do clap em português
 
 /// `println!` que não entra em pânico quando a saída padrão está fechada
 /// (`listar | head`, o programa que lia o `--progresso-json` fechou o pipe,
@@ -43,6 +44,7 @@ mod progresso;
 mod sistema;
 mod temporario;
 mod terminal;
+mod uso;
 #[cfg(test)]
 mod testes;
 #[cfg(test)]
@@ -68,21 +70,11 @@ fn main() {
     sistema::instalar_cancelamento();
     terminal::preparar_console();
 
-    let cli = match Cli::try_parse() {
-        Ok(cli) => cli,
-        Err(e) => {
-            use clap::error::ErrorKind;
-            if matches!(e.kind(), ErrorKind::DisplayHelp | ErrorKind::DisplayVersion) {
-                e.exit(); // --help e --version: saída 0
-            }
-            // Erro de uso sai com 1, como os outros erros: o clap usaria 2,
-            // que é o "não confere" do verificar (um xiso-manager mais novo
-            // passando uma opção que esta versão não conhece leria "imagem
-            // modificada").
-            let _ = e.print();
-            std::process::exit(1);
-        }
-    };
+    // ajuda e erros de uso em português; erro de uso sai com 1 (ver uso::sair)
+    let cli = Cli::try_parse().unwrap_or_else(|e| uso::sair(e));
+    if cli.cancelar_pela_entrada {
+        sistema::cancelar_quando_entrada_fechar();
+    }
     // modos em que o erro sai como evento JSON em stdout (o protocolo)
     let progresso_json = matches!(
         &cli.comando,

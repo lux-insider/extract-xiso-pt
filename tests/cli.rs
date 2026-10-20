@@ -217,6 +217,93 @@ fn s5_janela_fechada_no_meio_da_extracao_limpa_tudo() {
     );
 }
 
+/// C-2: com `--cancelar-pela-entrada`, fechar a entrada padrão no meio da
+/// extração cancela de forma limpa (código 130, nada fica para trás). É o
+/// jeito de um programa sem console (a interface do xiso-manager no
+/// Windows) pedir o cancelamento.
+#[test]
+fn c2_fechar_a_entrada_cancela_e_limpa() {
+    use std::io::{BufRead, BufReader};
+    let t = Temp::nova("c2");
+    let iso = imagem_com_um_arquivo_grande(&t, 1 << 30);
+    let d = t.0.join("saida");
+    let mut filho = Command::new(BIN)
+        .args([
+            "extrair".as_ref(),
+            iso.as_os_str(),
+            "-d".as_ref(),
+            d.as_os_str(),
+        ])
+        .args(["--progresso-json", "--cancelar-pela-entrada"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut linhas = BufReader::new(filho.stdout.take().unwrap()).lines();
+    // o primeiro evento de progresso: o .parcial já existe
+    for l in linhas.by_ref() {
+        if l.unwrap().contains("\"evento\":\"progresso\"") {
+            break;
+        }
+    }
+    drop(filho.stdin.take());
+    let ultima = linhas.map(|l| l.unwrap()).last().unwrap_or_default();
+    let status = filho.wait().unwrap();
+    assert_eq!(status.code(), Some(130), "{status:?}");
+    assert!(ultima.contains("\"evento\":\"erro\""), "{ultima}");
+    assert!(
+        !d.exists(),
+        "a pasta criada pela extração deveria ter sido apagada"
+    );
+}
+
+/// Sem fechar a entrada, a opção não muda nada: a operação vai até o fim.
+#[test]
+fn c2_entrada_aberta_nao_cancela() {
+    let t = Temp::nova("c2-aberta");
+    let iso = imagem_com_um_arquivo_grande(&t, 1 << 20);
+    let d = t.0.join("saida");
+    let mut filho = Command::new(BIN)
+        .args([
+            "extrair".as_ref(),
+            iso.as_os_str(),
+            "-d".as_ref(),
+            d.as_os_str(),
+        ])
+        .arg("--cancelar-pela-entrada")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    // o wait() fecha a entrada do filho antes de esperar: ela fica aqui,
+    // aberta, até o fim
+    let entrada = filho.stdin.take();
+    let status = filho.wait().unwrap();
+    drop(entrada);
+    assert_eq!(status.code(), Some(0), "{status:?}");
+    assert!(d.join("grande.bin").exists());
+}
+
+/// U-1: ajuda e erros de uso em português.
+#[test]
+fn u1_ajuda_e_erros_de_uso_em_portugues() {
+    let o = rodar(&["listar".as_ref(), "--xyz".as_ref()]);
+    let erro = String::from_utf8_lossy(&o.stderr);
+    assert!(erro.contains("erro: argumento inesperado '--xyz'"), "{erro}");
+    assert!(erro.contains("Uso: "), "{erro}");
+    assert!(!erro.contains("Usage"), "{erro}");
+    let o = rodar(&["extrair".as_ref(), "--help".as_ref()]);
+    let ajuda = String::from_utf8_lossy(&o.stdout);
+    for pt in ["Uso:", "Argumentos:", "Opções:", "Mostra a ajuda", "Imagem de disco"] {
+        assert!(ajuda.contains(pt), "falta {pt:?} em {ajuda}");
+    }
+    for en in ["Usage", "Options", "Arguments", "Print help"] {
+        assert!(!ajuda.contains(en), "sobrou {en:?} em {ajuda}");
+    }
+}
+
 /// E-1: um erro de E/S diz qual arquivo e qual operação falhou.
 #[test]
 fn e1_erro_de_es_diz_arquivo_e_operacao() {
