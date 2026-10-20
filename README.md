@@ -148,7 +148,7 @@ o padrão.
 | 0 | tudo certo |
 | 1 | erro (imagem inválida, destino ocupado, sem espaço, opção desconhecida...) |
 | 2 | `verificar`: o Redump tem este jogo com outro SHA-1 (modificado, corrompido ou outra versão); com `--dat`, também quando a imagem não está no .dat |
-| 130 | cancelado (Ctrl+C, SIGTERM, terminal ou janela fechados) |
+| 130 | cancelado (Ctrl+C, SIGTERM, terminal ou janela fechados, ou entrada fechada com `--cancelar-pela-entrada`) |
 
 ---
 
@@ -164,6 +164,11 @@ Com isso, o programa emite uma linha JSON por evento em stdout: `fase`,
 `progresso` (bytes, velocidade e ETA), `concluido` ou `erro`. É o mesmo
 protocolo do [iso2god-pt](https://github.com/lux-insider/iso2god-pt), usado pelo
 [xiso-manager](https://github.com/lux-insider/xiso-manager) para a barra de progresso.
+
+Para cancelar sem console (um programa com janela, no Windows, não tem como
+mandar Ctrl+C), use `--cancelar-pela-entrada`, ligue um pipe na entrada
+padrão e feche-o: a operação para no próximo ponto seguro, apaga o que
+criou e sai com 130.
 
 ---
 
@@ -205,6 +210,8 @@ src/
 ├── temporario.rs       arquivos temporários e troca atômica de nome
 ├── progresso.rs        eventos de progresso e protocolo JSON
 ├── terminal.rs         cores, barra de progresso e símbolos
+├── sistema.rs          espaço livre e cancelamento (Ctrl+C, sinais, entrada fechada)
+├── uso.rs              ajuda e erros de uso em português
 └── testes*.rs          imagens sintéticas, entradas hostis e fuzz
 tests/                  testes do programa completo, incluindo o console do Windows
 ```
@@ -213,7 +220,7 @@ tests/                  testes do programa completo, incluindo o console do Wind
 
 ## Testes
 
-- **68 testes** (`cargo test --release`), com imagens sintéticas de todos os
+- **73 testes** (`cargo test --release`), com imagens sintéticas de todos os
   layouts, milhares de imagens corrompidas de propósito e comparação de
   saídas byte a byte.
 - **Integração contínua** no GitHub Actions, no Linux e no Windows.

@@ -5,11 +5,35 @@ antiga. As versões seguem o [Versionamento Semântico](https://semver.org/lang/
 
 | Versão | Data | Destaque |
 |---|---|---|
+| [0.2.4](#024--2026-10-20) | 20/10/2026 | Cancelamento sem console e ajuda em português |
 | [0.2.3](#023--2026-10-01) | 01/10/2026 | Robustez contra arquivos corrompidos e nomes com acento |
 | [0.2.2](#022--2026-09-30) | 30/09/2026 | Todos os tamanhos de disco completo do Redump |
 | [0.2.1](#021--2026-09-30) | 30/09/2026 | ISO enxuta reconhecida como cópia íntegra |
 | [0.2.0](#020--2026-09-29) | 29/09/2026 | `.dat` do Redump integrados ao `verificar` |
 | [0.1.0](#010--2026-09-29) | 29/09/2026 | Primeira versão |
+
+---
+
+## 0.2.4 — 2026-10-20
+
+### Adicionado
+- **`--cancelar-pela-entrada`:** fechar a entrada padrão cancela a operação
+  e apaga o que ela criou, como o Ctrl+C. É para programas que chamam o
+  extract-xiso-pt sem console: no Windows, um programa com janela não
+  consegue mandar Ctrl+C, e encerrar o processo à força deixava arquivos
+  pela metade. Vale para todos os comandos; sem a opção, nada muda.
+
+### Alterado
+- **Ajuda e erros de uso em português** ("Uso", "Opções", "argumento
+  inesperado"...); antes essas partes saíam em inglês.
+- A ajuda descreve os argumentos `<IMAGEM>` e `<ARQUIVOS>`.
+
+### Segurança
+- **Mais nomes reservados do Windows recusados:** `CONIN$`, `CONOUT$`,
+  `COM0`, `LPT0`, `COM¹²³`, `LPT¹²³`, `CLOCK$`, `CONFIG$` e nomes com
+  espaço antes do ponto (`CON .txt`). Uma imagem com um desses nomes passa a
+  ser recusada, como já acontecia com `CON` e `COM1`; nenhum jogo conhecido
+  usa esses nomes.
 
 ---
 
