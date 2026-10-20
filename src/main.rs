@@ -44,13 +44,13 @@ mod progresso;
 mod sistema;
 mod temporario;
 mod terminal;
-mod uso;
 #[cfg(test)]
 mod testes;
 #[cfg(test)]
 mod testes_auditoria;
 #[cfg(test)]
 mod testes_saida;
+mod uso;
 mod verificar;
 
 use std::path::Path;

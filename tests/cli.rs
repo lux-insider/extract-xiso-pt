@@ -291,12 +291,21 @@ fn c2_entrada_aberta_nao_cancela() {
 fn u1_ajuda_e_erros_de_uso_em_portugues() {
     let o = rodar(&["listar".as_ref(), "--xyz".as_ref()]);
     let erro = String::from_utf8_lossy(&o.stderr);
-    assert!(erro.contains("erro: argumento inesperado '--xyz'"), "{erro}");
+    assert!(
+        erro.contains("erro: argumento inesperado '--xyz'"),
+        "{erro}"
+    );
     assert!(erro.contains("Uso: "), "{erro}");
     assert!(!erro.contains("Usage"), "{erro}");
     let o = rodar(&["extrair".as_ref(), "--help".as_ref()]);
     let ajuda = String::from_utf8_lossy(&o.stdout);
-    for pt in ["Uso:", "Argumentos:", "Opções:", "Mostra a ajuda", "Imagem de disco"] {
+    for pt in [
+        "Uso:",
+        "Argumentos:",
+        "Opções:",
+        "Mostra a ajuda",
+        "Imagem de disco",
+    ] {
         assert!(ajuda.contains(pt), "falta {pt:?} em {ajuda}");
     }
     for en in ["Usage", "Options", "Arguments", "Print help"] {

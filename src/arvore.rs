@@ -334,7 +334,12 @@ pub fn validar_nome(nome: &str, caminho: &str) -> Resultado<()> {
     }
     // O Windows olha só o que vem antes do primeiro ponto, sem os espaços do
     // fim: "con.txt" e "CON .dat" também são o dispositivo CON.
-    let base = nome.split('.').next().unwrap_or("").trim_end_matches(' ').to_ascii_uppercase();
+    let base = nome
+        .split('.')
+        .next()
+        .unwrap_or("")
+        .trim_end_matches(' ')
+        .to_ascii_uppercase();
     const RESERVADOS: [&str; 34] = [
         "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$", "COM0", "COM1", "COM2", "COM3", "COM4",
         "COM5", "COM6", "COM7", "COM8", "COM9", "COM¹", "COM²", "COM³", "LPT0", "LPT1", "LPT2",

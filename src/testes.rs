@@ -251,7 +251,11 @@ fn aceita_nomes_so_parecidos_com_os_reservados() {
         let tab = tabela(&[(n, 0, 0, ARQ)]);
         let mut img = Construtor::novo(35);
         img.raiz(33, tab.len() as u32).por(33, &tab);
-        assert!(ler(&img.gravar(&t.0)).is_ok(), "nome {:?} deveria ser aceito", String::from_utf8_lossy(n));
+        assert!(
+            ler(&img.gravar(&t.0)).is_ok(),
+            "nome {:?} deveria ser aceito",
+            String::from_utf8_lossy(n)
+        );
     }
 }
 
