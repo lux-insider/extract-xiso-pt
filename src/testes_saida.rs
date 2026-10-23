@@ -219,7 +219,7 @@ fn criar_reescrever_e_extrair_pasta_de_jogo_identico() {
     );
 
     // Igual à imagem criada, byte a byte. Até a correção do A-6 (ver
-    // AUDITORIA.md) diferia em 10 bytes: o nome "Ação.wav", UTF-8 na
+    // docs/AUDITORIA.md) diferia em 10 bytes: o nome "Ação.wav", UTF-8 na
     // origem, saía em Latin-1 na reescrita (valor antigo: 441bf9dc...).
     let iso2 = t.0.join("reescrita.iso");
     reescrever(&iso, &iso2, false, false);

@@ -1,4 +1,4 @@
-# extract-xiso-pt — plano
+# extract-xiso-pt — o formato XDVDFS
 
 Ferramenta própria, em Rust, para imagens de disco de Xbox e Xbox 360
 (XDVDFS): listar, extrair, criar, reescrever/otimizar e verificar. Escrita a

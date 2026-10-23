@@ -3,7 +3,9 @@
 [![Versão](https://img.shields.io/github/v/release/lux-insider/extract-xiso-pt?label=vers%C3%A3o)](https://github.com/lux-insider/extract-xiso-pt/releases/latest)
 [![Testes](https://github.com/lux-insider/extract-xiso-pt/actions/workflows/testes.yml/badge.svg)](https://github.com/lux-insider/extract-xiso-pt/actions/workflows/testes.yml)
 [![Licença: MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-blue)](LICENSE)
-![Plataformas](https://img.shields.io/badge/plataformas-Windows%20%7C%20Linux-informational)
+![Windows](https://img.shields.io/badge/Windows-0078D6?logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0iI2ZmZiIgZD0iTTAgMGgxMS4zdjExLjNIMHpNMTIuNyAwSDI0djExLjNIMTIuN3pNMCAxMi43aDExLjNWMjRIMHpNMTIuNyAxMi43SDI0VjI0SDEyLjd6Ii8%2BPC9zdmc%2B)
+![Linux](https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=black)
+![Rust](https://img.shields.io/badge/feito%20em-Rust-orange)
 
 Ferramenta para imagens de disco de **Xbox** e **Xbox 360** (sistema de
 arquivos XDVDFS), em **Rust** e em português: **listar**, **extrair**,
@@ -28,6 +30,7 @@ dele.
 - [Estrutura do projeto](#estrutura-do-projeto)
 - [Testes](#testes)
 - [Documentação](#documentação)
+- [Contribuir](#contribuir)
 - [Licença](#licença)
 
 ---
@@ -235,8 +238,17 @@ tests/                  testes do programa completo, incluindo o console do Wind
 | Documento | Conteúdo |
 |---|---|
 | [CHANGELOG.md](CHANGELOG.md) | histórico de versões |
-| [PLANO.md](PLANO.md) | o formato XDVDFS e as decisões de segurança |
-| [AUDITORIA.md](AUDITORIA.md) | auditoria de segurança e confiabilidade, com cada achado e sua correção |
+| [FORMATO-XDVDFS.md](docs/FORMATO-XDVDFS.md) | o formato XDVDFS e as decisões de segurança |
+| [AUDITORIA.md](docs/AUDITORIA.md) | auditoria de segurança e confiabilidade, com cada achado e sua correção |
+
+---
+
+## Contribuir
+
+Erros e ideias são bem-vindos nas [issues](https://github.com/lux-insider/extract-xiso-pt/issues/new/choose),
+com um modelo para cada caso. Para enviar código, veja o
+[CONTRIBUTING.md](CONTRIBUTING.md); para falhas de segurança, o
+[SECURITY.md](SECURITY.md).
 
 ---
 
