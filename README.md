@@ -7,6 +7,8 @@
 ![Linux](https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=black)
 ![Rust](https://img.shields.io/badge/feito%20em-Rust-orange)
 
+![extract-xiso-pt](docs/banner.png)
+
 Ferramenta para imagens de disco de **Xbox** e **Xbox 360** (sistema de
 arquivos XDVDFS), em **Rust** e em português: **listar**, **extrair**,
 **criar** a partir de uma pasta, **reescrever** como XISO enxuta e
