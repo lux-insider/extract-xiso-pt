@@ -1,4 +1,4 @@
-//! Um teste por correção da auditoria (ver AUDITORIA.md): cada um monta o
+//! Um teste por correção da auditoria (ver docs/AUDITORIA.md): cada um monta o
 //! cenário que causava o problema e confere que ele não acontece mais.
 
 // Vários cenários (links simbólicos, sinais) só existem no Unix.
