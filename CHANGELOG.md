@@ -16,6 +16,14 @@ antiga. As versões seguem o [Versionamento Semântico](https://semver.org/lang/
 
 ## 0.2.4 — 2026-10-20
 
+### Correções depois do lançamento
+As correções entram na própria versão (o download da release é atualizado).
+
+- **29/10 — Emojis e tamanhos:** os emojis que alguns terminais desenhavam
+  com 1 coluna (⚠️, ⚙️, ⏱️...) desalinhavam as caixas; foram trocados por
+  emojis que todo terminal desenha com 2 colunas. Arquivos com menos de
+  1 KiB aparecem em bytes ("5 B"), não "0.00 KiB".
+
 ### Adicionado
 - **`--cancelar-pela-entrada`:** fechar a entrada padrão cancela a operação
   e apaga o que ela criou, como o Ctrl+C. É para programas que chamam o
